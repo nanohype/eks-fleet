@@ -5,7 +5,7 @@
 # and the Workspace supplies the S3 backendConfig.
 #
 # Cross-account targeting rides on the entrypoint's assume_role_arn var (the
-# composition sets it to the workload account's terraform-vend role); the hub's
+# composition sets it to the workload account's eks-fleet-vend role); the hub's
 # IRSA role is allowed to sts:AssumeRole that role. So one ProviderConfig serves
 # every account — no per-account duplication.
 apiVersion: tf.upbound.io/v1beta1

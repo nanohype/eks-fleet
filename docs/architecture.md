@@ -81,12 +81,13 @@ composition adds one patch. No parallel vocabulary.
 
 ## Cross-account vending
 
-The hub's Crossplane SA is IRSA-bound to a management-account role. That role
-`sts:AssumeRole`s a `terraform-vend` role in each workload account (provisioned by
-landing-zone, scoped trust + permissions boundary — the same shape as the
-operator's per-tenant IRSA). One `ProviderConfig` per account, named
-`aws-<account>`, picked by `spec.account`. The 2nd AWS account enters here, and
-not before.
+The hub's Crossplane SA is IRSA-bound to a management-account role
+(`eks-fleet-crossplane`). That role `sts:AssumeRole`s a `fleet-vend` role
+(resource `${env}-eks-fleet-vend`, IAM path `/eks-fleet/`) in each workload
+account — provisioned by landing-zone's `components/aws/fleet-vend/`, scoped
+trust + permissions boundary, the same shape as the operator's per-tenant IRSA.
+Picked by `spec.account` (the Composition derives the vend-role ARN, or honors an
+explicit `spec.vendRoleArn`). The 2nd AWS account enters here, and not before.
 
 ## Where it plugs into the stack
 
@@ -108,8 +109,8 @@ not before.
 3. **Rung 1 — vend one cluster, same account.** A `Cluster` claim → an EKS cluster
    in the management account (no cross-account yet). The cluster analog of the
    operator's first reconcile. Validate teardown (delete the claim → cluster gone).
-4. **Rung 2 — cross-account.** Add the `terraform-vend` role + a per-account
-   `ProviderConfig`; vend into workload-dev.
+4. **Rung 2 — cross-account.** Add the `fleet-vend` role (landing-zone
+   `components/aws/fleet-vend/`); vend into workload-dev via `spec.account`.
 5. **Day-2** — once the claim API is proven, migrate the hot path to **Cluster API
    / CAPA** for upgrade/lifecycle maturity (the XRD stays the front door).
 
