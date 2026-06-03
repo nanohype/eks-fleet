@@ -1,0 +1,25 @@
+# Secret-cred ProviderConfig for the local kind hub. Replaces the production
+# InjectedIdentity (config/providers/providerconfig.yaml) — kind has no IRSA, so
+# provider-terraform reads AWS creds from the `aws-creds` Secret instead. Named
+# `default` so the Cluster composition (providerConfigRef: default) uses it as-is.
+#
+# The creds are a short-lived SSO session (see aws-creds.secret.example.yaml), so
+# the whole validation must finish within the session's lifetime.
+apiVersion: tf.upbound.io/v1beta1
+kind: ProviderConfig
+metadata:
+  name: default
+spec:
+  # Credentials only — NO configuration block. The fleet/cluster-stack entrypoint
+  # already owns the provider (providers.tf) + the S3 backend (versions.tf), so a
+  # provider/backend here would collide. provider-terraform writes the Secret to
+  # `filename` in the workspace and points AWS_SHARED_CREDENTIALS_FILE at it; the
+  # entrypoint's provider then resolves the [default] profile. VERIFY this wiring
+  # on the first run (see the runbook) — fallback is env-var creds via the runtime.
+  credentials:
+    - filename: aws-credentials.ini
+      source: Secret
+      secretRef:
+        namespace: crossplane-system
+        name: aws-creds
+        key: credentials

@@ -42,6 +42,13 @@ spec:
                 team:
                   type: string
                   description: Owning team (tagging + ownership).
+                vendRoleArn:
+                  type: string
+                  default: ""
+                  description: >-
+                    Cross-account role the entrypoint's provider assumes to provision
+                    into a workload account. Empty = provision with the hub's own
+                    credentials (same-account — e.g. the local kind-hub validation).
                 # --- cluster (landing-zone components/aws/cluster) ------------
                 clusterName:
                   type: string

@@ -87,17 +87,12 @@ spec:
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.network.vpcCidr
                 toFieldPath: spec.forProvider.vars[5].value
-              # spec.account -> the workload account's vend role; the entrypoint's
-              # provider assumes it (the hub's IRSA chain allows it). Same-account
-              # vending uses the role in that same account.
+              # spec.vendRoleArn -> the entrypoint's provider assume_role (cross-
+              # account). Empty (default) = no assume_role; the entrypoint uses the
+              # hub's own credentials, which is the same-account / kind-hub path.
               - type: FromCompositeFieldPath
-                fromFieldPath: spec.account
+                fromFieldPath: spec.vendRoleArn
                 toFieldPath: spec.forProvider.vars[6].value
-                transforms:
-                  - type: string
-                    string:
-                      type: Format
-                      fmt: "arn:aws:iam::%s:role/terraform-vend"
               # state key + kubeconfig secret name, per cluster
               - type: FromCompositeFieldPath
                 fromFieldPath: metadata.name
