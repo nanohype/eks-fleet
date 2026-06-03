@@ -82,10 +82,10 @@ spec:
                 # --- the substrate the Workspaces run ------------------------
                 moduleSource:
                   type: string
-                  default: "git::https://github.com/nanohype/landing-zone.git//fleet/entrypoints?ref=main"
+                  default: "git::https://github.com/nanohype/landing-zone.git//fleet/cluster-stack?ref=main"
                   description: >-
-                    Base git source for the plain-tofu entrypoints the Workspaces run
-                    (provider-terraform runs tofu, not terragrunt — see docs/architecture.md).
+                    Git source for the plain-tofu cluster-stack entrypoint the Workspace
+                    runs (provider-terraform runs tofu, not terragrunt — see docs/architecture.md).
               required:
                 - account
                 - region

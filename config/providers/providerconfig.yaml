@@ -1,52 +1,18 @@
-# How the hub reaches a spoke. One ProviderConfig per workload account, named
-# aws-<account-id> (the composition picks it from the Cluster's spec.account).
-# The management cluster's Crossplane SA (IRSA, management account) assumes the
-# vend role in the target account — cross-account, scoped, no static keys.
+# One ProviderConfig for the hub. credentials = InjectedIdentity: the management
+# cluster's Crossplane ServiceAccount (IRSA, management account). It deliberately
+# declares NO provider/assume_role/backend block — the fleet/cluster-stack
+# entrypoint owns the AWS provider (region + default_tags + optional assume_role),
+# and the Workspace supplies the S3 backendConfig.
 #
-# The matching trust role (terraform-vend in each workload account, trusting the
-# eks-fleet-crossplane role) is provisioned by landing-zone, the same shape as
-# the operator's per-tenant IRSA: scoped trust + a permissions boundary.
----
-# dev workload account
+# Cross-account targeting rides on the entrypoint's assume_role_arn var (the
+# composition sets it to the workload account's terraform-vend role); the hub's
+# IRSA role is allowed to sts:AssumeRole that role. So one ProviderConfig serves
+# every account — no per-account duplication.
 apiVersion: tf.upbound.io/v1beta1
 kind: ProviderConfig
 metadata:
-  name: aws-111111111111
-spec:
-  credentials:
-    - filename: aws-creds.ini
-      source: InjectedIdentity          # the pod's IRSA (management account)
-  configuration: |
-    provider "aws" {
-      region = "us-west-2"
-      assume_role {
-        role_arn     = "arn:aws:iam::111111111111:role/terraform-vend"
-        external_id  = "eks-fleet"
-      }
-    }
-    # provider-terraform does NOT persist state in-pod — every Workspace points
-    # at the shared S3 backend (configured per-Workspace in the composition).
-    terraform {
-      backend "s3" {}
-    }
----
-# staging workload account (template — duplicate per account, set the ids)
-apiVersion: tf.upbound.io/v1beta1
-kind: ProviderConfig
-metadata:
-  name: aws-222222222222
+  name: default
 spec:
   credentials:
     - filename: aws-creds.ini
       source: InjectedIdentity
-  configuration: |
-    provider "aws" {
-      region = "us-west-2"
-      assume_role {
-        role_arn    = "arn:aws:iam::222222222222:role/terraform-vend"
-        external_id = "eks-fleet"
-      }
-    }
-    terraform {
-      backend "s3" {}
-    }

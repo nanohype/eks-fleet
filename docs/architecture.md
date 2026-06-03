@@ -46,7 +46,7 @@ So the composition's `Workspace` points at a **plain-tofu entrypoint** — a thi
 root module that wires `network → cluster` (and later `cluster-bootstrap`,
 `agent-iam`) with explicit providers + vars, the same chaining the env tree does,
 made tofu-native. **Building that entrypoint is the first build task.** Two ways:
-1. A `landing-zone/fleet/entrypoints/` tofu root that `module`-calls the existing
+1. A `landing-zone/fleet/cluster-stack/` tofu root that `module`-calls the existing
    component modules (keeps everything in landing-zone). ← default
 2. A terragrunt-aware runner image for the Workspace (heavier, less standard).
 

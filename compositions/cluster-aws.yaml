@@ -1,13 +1,12 @@
-# Cluster -> one provider-terraform Workspace that runs the landing-zone cluster
-# stack (network + cluster wired inside a plain-tofu entrypoint), then maps the
-# entrypoint's outputs back to the Cluster's status.
+# Cluster -> one provider-terraform Workspace that runs the landing-zone
+# fleet/cluster-stack entrypoint (network + cluster wired tofu-natively), then
+# maps the entrypoint's outputs back to the Cluster's status.
 #
-# Why one Workspace + an entrypoint (not one Workspace per component): provider-
-# terraform runs `tofu`, not `terragrunt`, so it can't point at a landing-zone
-# component directory (those rely on terragrunt-generated providers + _envcommon
-# dependency wiring). The entrypoint is a thin tofu root that wires network ->
-# cluster with explicit vars — the same chaining the env tree does, made tofu-
-# native. Building that entrypoint is the first build task (docs/architecture.md).
+# provider-terraform runs `tofu`, not `terragrunt`, so the Workspace points at the
+# plain-tofu entrypoint — not a component directory. The entrypoint owns the AWS
+# provider (region + default_tags + an optional cross-account assume_role), so a
+# single ProviderConfig (InjectedIdentity = the hub's IRSA) is enough here; the
+# per-cluster account targeting rides on the assume_role_arn var below.
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
@@ -34,25 +33,22 @@ spec:
               apiVersion: tf.upbound.io/v1beta1
               kind: Workspace
               spec:
-                # NOTE: the 60m timeout + S3 backend are not optional — an EKS
-                # build outruns the 20m default and provider-terraform doesn't
-                # persist state in-pod. Timeout is set on the provider's
-                # DeploymentRuntimeConfig; the backend is configured here.
+                providerConfigRef:
+                  name: default
                 forProvider:
                   source: Remote
-                  # module is patched from spec.moduleSource
+                  # module is patched from spec.moduleSource (the cluster-stack entrypoint)
                   enableTerraformCLILogging: true
-                  # Index-ordered vars (patched below). A later move to
-                  # function-go-templating templates the whole Workspace and
-                  # drops this index coupling.
+                  # Index-ordered vars matching fleet/cluster-stack/variables.tf.
+                  # A later move to function-go-templating drops the index coupling.
                   vars:
-                    - key: account_id       # 0
-                    - key: region           # 1
-                    - key: environment      # 2
-                    - key: team             # 3
-                    - key: cluster_name     # 4
-                    - key: cluster_version  # 5
-                    - key: vpc_cidr         # 6
+                    - key: region           # 0
+                    - key: environment      # 1
+                    - key: team             # 2
+                    - key: cluster_name     # 3
+                    - key: cluster_version  # 4
+                    - key: vpc_cidr         # 5
+                    - key: assume_role_arn  # 6
                   backendConfig:
                     - key: bucket
                       value: nanohype-eks-fleet-tfstate
@@ -72,37 +68,36 @@ spec:
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.moduleSource
                 toFieldPath: spec.forProvider.module
-              # spec -> tofu vars
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.account
-                toFieldPath: spec.forProvider.vars[0].value
+              # spec -> tofu vars (fleet/cluster-stack/variables.tf)
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.region
-                toFieldPath: spec.forProvider.vars[1].value
+                toFieldPath: spec.forProvider.vars[0].value
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.environment
-                toFieldPath: spec.forProvider.vars[2].value
+                toFieldPath: spec.forProvider.vars[1].value
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.team
-                toFieldPath: spec.forProvider.vars[3].value
+                toFieldPath: spec.forProvider.vars[2].value
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.clusterName
-                toFieldPath: spec.forProvider.vars[4].value
+                toFieldPath: spec.forProvider.vars[3].value
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.clusterVersion
-                toFieldPath: spec.forProvider.vars[5].value
+                toFieldPath: spec.forProvider.vars[4].value
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.network.vpcCidr
-                toFieldPath: spec.forProvider.vars[6].value
-              # placement: pick the per-account ProviderConfig (config/providers/)
+                toFieldPath: spec.forProvider.vars[5].value
+              # spec.account -> the workload account's vend role; the entrypoint's
+              # provider assumes it (the hub's IRSA chain allows it). Same-account
+              # vending uses the role in that same account.
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.account
-                toFieldPath: spec.providerConfigRef.name
+                toFieldPath: spec.forProvider.vars[6].value
                 transforms:
                   - type: string
                     string:
                       type: Format
-                      fmt: "aws-%s"
+                      fmt: "arn:aws:iam::%s:role/terraform-vend"
               # state key + kubeconfig secret name, per cluster
               - type: FromCompositeFieldPath
                 fromFieldPath: metadata.name
