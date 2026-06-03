@@ -15,9 +15,11 @@ Terragrunt substrate:
   the network it needs); status returns the outputs (endpoint, CA, OIDC).
 - **The Composition** — the line. Renders provider-terraform `Workspace`
   resources that run the landing-zone `network` → `cluster` chain.
-- **ProviderConfigs** — how the hub reaches each spoke: the management cluster's
-  Crossplane ServiceAccount assumes a role in the target workload account (IRSA →
-  cross-account `AssumeRole`).
+- **Cross-account reach** — one ProviderConfig (`default`, InjectedIdentity = the
+  hub's Crossplane SA IRSA) serves every account. For a spoke, the Composition
+  sets the entrypoint's `assume_role_arn` from the claim, so the hub's IRSA role
+  assumes the workload's `fleet-vend` role (IRSA → cross-account `AssumeRole`).
+  One ProviderConfig, not one per account.
 
 The substrate (`landing-zone/components/aws/*`) stays the source of truth — this
 repo wraps it, it doesn't reimplement it.
@@ -36,8 +38,9 @@ Every `Cluster` claim:
 
 ## Vend a cluster
 
-1. Pick the target workload account; ensure its `ProviderConfig` exists
-   (`config/providers/`) — the cross-account role the hub assumes.
+1. Pick the target workload account; ensure its `fleet-vend` role exists
+   (landing-zone `components/aws/fleet-vend/`) — the cross-account role the hub
+   assumes. A same-account vend needs nothing here.
 2. Copy `examples/cluster-dev.yaml`, set `metadata.namespace`,
    `spec.region`, `spec.account`, and the node sizing.
 3. `kubectl apply -f` it to the management cluster. ArgoCD does this in the real
@@ -59,6 +62,6 @@ Every `Cluster` claim:
 - [`README.md`](README.md) — overview
 - [`apis/cluster/`](apis/cluster/) — the `Cluster` XRD (the API)
 - [`compositions/`](compositions/) — the line (XR → Workspaces)
-- [`config/`](config/) — management-cluster bootstrap + ProviderConfigs
+- [`config/`](config/) — management-cluster bootstrap + the hub ProviderConfig
 - [`docs/architecture.md`](docs/architecture.md) — hub/spoke design + open decisions
 - [`CLAUDE.md`](CLAUDE.md) — Claude Code session instructions

@@ -36,11 +36,16 @@ kubectl apply -f providers.yaml          # provider-terraform + runtime config
 kubectl apply -f ../functions.yaml       # function-patch-and-transform
 ```
 
-## 5. ProviderConfigs (one per workload account)
+## 5. The hub ProviderConfig (single, InjectedIdentity)
 
 ```bash
 kubectl apply -f ../providers/providerconfig.yaml
 ```
+
+One `default` ProviderConfig serves every account — the hub's IRSA provisions in
+its own account and `sts:AssumeRole`s a workload's `fleet-vend` role for the rest.
+Cross-account targeting rides on the claim (`spec.account` → the entrypoint's
+`assume_role_arn`), so there's no per-account ProviderConfig to add.
 
 ## 6. The Cluster API + composition
 

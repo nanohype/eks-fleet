@@ -20,7 +20,7 @@ eks-fleet/
 │   └── cluster-aws.yaml         # Composition: Cluster XR → provider-terraform Workspaces
 ├── config/
 │   ├── bootstrap/               # Management-cluster install: Crossplane + providers + functions
-│   └── providers/               # ProviderConfigs (mgmt IRSA + per-workload-account AssumeRole)
+│   └── providers/               # The hub ProviderConfig (single, InjectedIdentity)
 ├── examples/                    # Sample Cluster claims
 ├── docs/                        # Architecture + design decisions
 ├── crossplane.yaml              # Package metadata (this repo as a Crossplane Configuration)
@@ -62,9 +62,12 @@ That entrypoint is the first build task — see `docs/architecture.md`.
 3. `task validate` — yamllint + render the examples.
 
 ### Add a workload account (vend into a new spoke)
-1. Provision the cross-account role in that account (landing-zone; trusts the hub
-   OIDC). 2. Add a `ProviderConfig` in `config/providers/` referencing the role.
-3. Set `spec.account` on the claim to that account.
+1. Provision the `fleet-vend` role in that account (landing-zone
+   `components/aws/fleet-vend/`; trusts the hub's `eks-fleet-crossplane` role).
+2. Set `spec.account` on the claim to that account — the Composition derives the
+   vend-role ARN and the entrypoint assumes it. No new ProviderConfig: the single
+   `default` (InjectedIdentity) serves every account; cross-account targeting
+   rides on the claim, not on a per-account ProviderConfig.
 
 ## Validation Commands
 

@@ -31,7 +31,7 @@ spec:
                 # --- placement: which spoke account/region to vend into -------
                 account:
                   type: string
-                  description: Workload AWS account id to provision the cluster in (selects the ProviderConfig the hub assumes a role into).
+                  description: Workload AWS account id to vend into. The Composition derives the vend-role ARN from it (or set vendRoleArn); same account as the hub = no cross-account assume.
                 region:
                   type: string
                   description: AWS region.

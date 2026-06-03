@@ -31,7 +31,7 @@ a cluster is*; `eks-fleet` is the Kubernetes-native ordering API that runs it.
 
 - **Hub** — one management EKS in the `management` account. The one cluster you
   hand-author (it's what vends the rest). Runs Crossplane + provider-terraform +
-  ArgoCD; holds the `Cluster` API, the compositions, the ProviderConfigs.
+  ArgoCD; holds the `Cluster` API, the compositions, the hub ProviderConfig.
 - **Spokes** — workload clusters, manufactured into workload accounts. Each gets
   its own `eks-agent-platform` operator (the tenant control plane) once it's up.
 
@@ -63,7 +63,7 @@ field-for-field:
 | `clusterVersion` | `cluster_version` | `certificateAuthorityData` | `cluster_certificate_authority_data` |
 | `systemNodes.*` | `system_node_*` | `oidcProviderArn` | `oidc_provider_arn` |
 | `network.vpcCidr` | (network) `vpc_cidr` | `oidcIssuer` | `oidc_issuer` |
-| `account` | → ProviderConfig | `karpenterIamRoleArn` | `karpenter_iam_role_arn` |
+| `account` | → vend-role ARN (`assume_role`) | `karpenterIamRoleArn` | `karpenter_iam_role_arn` |
 
 When the cluster module gains a variable, the XRD gains the field and the
 composition adds one patch. No parallel vocabulary.
