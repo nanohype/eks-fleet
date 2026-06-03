@@ -1,24 +1,24 @@
-# Cluster -> one provider-terraform Workspace that runs the landing-zone
+# Cluster -> one provider-opentofu Workspace that runs the landing-zone
 # fleet/aws/cluster-stack entrypoint (network + cluster wired tofu-natively), then
 # maps the entrypoint's outputs back to the Cluster's status.
 #
-# provider-terraform runs `tofu`, not `terragrunt`, so the Workspace points at the
-# plain-tofu entrypoint — not a component directory. The entrypoint owns the AWS
-# provider (region + default_tags + an optional cross-account assume_role), so a
-# single ProviderConfig (InjectedIdentity = the hub's IRSA) is enough here; the
-# per-cluster account targeting rides on the assume_role_arn var below.
+# provider-opentofu runs `tofu` against the plain-tofu entrypoint (not a component
+# directory). The entrypoint owns the AWS provider (region + default_tags + an
+# optional cross-account assume_role) and the S3 backend block, so a single
+# ClusterProviderConfig (source None = the hub's IRSA) serves every account; the
+# per-cluster account targeting rides on the assume_role_arn var, and the per-cluster
+# state key rides on initArgs, below.
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
   name: cluster-aws
   labels:
     provider: aws
-    substrate: terragrunt
+    substrate: tofu
 spec:
   compositeTypeRef:
     apiVersion: fleet.nanohype.dev/v1alpha1
-    kind: XCluster
-  writeConnectionSecretsToNamespace: crossplane-system
+    kind: Cluster
   mode: Pipeline
   pipeline:
     - step: render-workspace
@@ -30,37 +30,51 @@ spec:
         resources:
           - name: cluster-stack
             base:
-              apiVersion: tf.upbound.io/v1beta1
+              apiVersion: opentofu.m.upbound.io/v1beta1
               kind: Workspace
               spec:
                 providerConfigRef:
+                  kind: ClusterProviderConfig
                   name: default
+                writeConnectionSecretToRef:
+                  name: ""  # patched: <name>-kubeconfig (lands in the Cluster's namespace)
                 forProvider:
                   source: Remote
-                  # module is patched from spec.moduleSource (the cluster-stack entrypoint)
-                  enableTerraformCLILogging: true
+                  # base default = the XRD's moduleSource default; the patch below
+                  # overrides it when a Cluster sets spec.moduleSource.
+                  module: "git::https://github.com/nanohype/landing-zone.git//fleet/aws/cluster-stack?ref=main"
+                  enableTofuCLILogging: true
+                  remotePullPolicy: IfNotPresent
                   # Index-ordered vars matching fleet/aws/cluster-stack/variables.tf.
-                  # A later move to function-go-templating drops the index coupling.
+                  # tofu binds by key, not position — the indices only couple the
+                  # patches below to these entries. A later move to function-go-templating
+                  # drops the coupling.
+                  # value: "" base defaults keep the required vars[].value present at
+                  # render (crossplane render doesn't apply XRD defaults); the patches
+                  # below override them, and at apply the XRD defaults populate the rest.
                   vars:
                     - key: region           # 0
+                      value: ""
                     - key: environment      # 1
+                      value: ""
                     - key: team             # 2
+                      value: ""
                     - key: cluster_name     # 3
+                      value: ""
                     - key: cluster_version  # 4
+                      value: ""
                     - key: vpc_cidr         # 5
+                      value: ""
                     - key: assume_role_arn  # 6
-                  backendConfig:
-                    - key: bucket
-                      value: nanohype-eks-fleet-tfstate
-                    - key: key
-                      value: ""  # patched: fleet/<name>/terraform.tfstate
-                    - key: region
-                      value: ""  # patched from spec.region
-                    - key: encrypt
-                      value: "true"
-                  writeConnectionSecretToRef:
-                    namespace: crossplane-system
-                    name: ""  # patched: <name>-kubeconfig
+                      value: ""
+                  # `tofu init` args complete the entrypoint's partial S3 backend
+                  # block. bucket + encrypt are static; key + region are patched per
+                  # cluster, so every Cluster gets an isolated state object.
+                  initArgs:
+                    - "-backend-config=bucket=nanohype-eks-fleet-tfstate"
+                    - ""  # patched [1]: -backend-config=key=fleet/<name>/terraform.tfstate
+                    - ""  # patched [2]: -backend-config=region=<region>
+                    - "-backend-config=encrypt=true"
             patches:
               - type: FromCompositeFieldPath
                 fromFieldPath: metadata.name
@@ -93,21 +107,27 @@ spec:
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.vendRoleArn
                 toFieldPath: spec.forProvider.vars[6].value
-              # state key + kubeconfig secret name, per cluster
+              # per-cluster S3 state key + region (tofu init -backend-config args)
               - type: FromCompositeFieldPath
                 fromFieldPath: metadata.name
-                toFieldPath: spec.forProvider.backendConfig[1].value
+                toFieldPath: spec.forProvider.initArgs[1]
                 transforms:
                   - type: string
                     string:
                       type: Format
-                      fmt: "fleet/%s/terraform.tfstate"
+                      fmt: "-backend-config=key=fleet/%s/terraform.tfstate"
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.region
-                toFieldPath: spec.forProvider.backendConfig[2].value
+                toFieldPath: spec.forProvider.initArgs[2]
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "-backend-config=region=%s"
+              # kubeconfig secret name, per cluster
               - type: FromCompositeFieldPath
                 fromFieldPath: metadata.name
-                toFieldPath: spec.forProvider.writeConnectionSecretToRef.name
+                toFieldPath: spec.writeConnectionSecretToRef.name
                 transforms:
                   - type: string
                     string:

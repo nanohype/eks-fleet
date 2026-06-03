@@ -23,14 +23,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: install crossplane CLI
         run: |
-          curl -sL https://raw.githubusercontent.com/crossplane/crossplane/master/install.sh | sh
+          curl -sL -o crossplane https://releases.crossplane.io/stable/v2.3.1/bin/linux_amd64/crank
+          chmod +x crossplane
           sudo mv crossplane /usr/local/bin/
-      - name: render the XR fixtures against the compositions
-        # crossplane render operates on the composite (XCluster), not the Cluster
-        # claim — render the XR fixtures in examples/xr/. The claim in examples/
-        # is the product-facing form; it shares the XRD schema exercised here.
+      - name: render the Cluster examples against the composition
+        # Under Crossplane v2 the namespaced Cluster IS the resource you apply — render
+        # it directly (no claim/XR split). Catches schema/patch drift without a cluster.
         run: |
-          for ex in examples/xr/*.yaml; do
+          for ex in examples/*.yaml; do
             echo "::group::render $ex"
             crossplane render "$ex" compositions/cluster-aws.yaml config/functions.yaml
             echo "::endgroup::"

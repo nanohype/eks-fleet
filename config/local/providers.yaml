@@ -1,20 +1,20 @@
-# provider-terraform for a LOCAL kind hub (kx) — same package as the EKS bootstrap,
+# provider-opentofu for a LOCAL kind hub (kx) — same package as the EKS bootstrap,
 # but the runtime config carries NO IRSA annotation (kind has no IRSA). Credentials
-# come from the Secret-cred ProviderConfig (providerconfig.yaml), not the pod's
-# identity. The 60m timeout still applies — an EKS build outruns the 20m default.
+# come from the Secret-cred ClusterProviderConfig (providerconfig.yaml), not the pod's
+# identity. The 60m timeout + 1m poll still apply.
 apiVersion: pkg.crossplane.io/v1
 kind: Provider
 metadata:
-  name: provider-terraform
+  name: provider-opentofu
 spec:
-  package: xpkg.upbound.io/crossplane-contrib/provider-terraform:v0.16.0
+  package: xpkg.upbound.io/upbound/provider-opentofu:v1.1.3
   runtimeConfigRef:
-    name: provider-terraform-local
+    name: provider-opentofu-local
 ---
 apiVersion: pkg.crossplane.io/v1beta1
 kind: DeploymentRuntimeConfig
 metadata:
-  name: provider-terraform-local
+  name: provider-opentofu-local
 spec:
   deploymentTemplate:
     spec:
@@ -26,4 +26,5 @@ spec:
               args:
                 - --debug
                 - --timeout=60m
+                - --poll=1m
                 - --max-reconcile-rate=5

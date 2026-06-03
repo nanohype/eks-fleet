@@ -1,11 +1,11 @@
 # eks-fleet
 
 The cluster control plane. `eks-fleet` vends EKS clusters from a declarative
-`Cluster` claim the way [`eks-agent-platform`](https://github.com/nanohype/eks-agent-platform)
+namespaced `Cluster` resource the way [`eks-agent-platform`](https://github.com/nanohype/eks-agent-platform)
 vends tenants — one factory line, one layer up.
 
-A Crossplane composition wraps the [`landing-zone`](https://github.com/nanohype/landing-zone)
-Terragrunt substrate, so the IaC stays the source of truth and you get a
+A Crossplane v2 composition wraps the [`landing-zone`](https://github.com/nanohype/landing-zone)
+OpenTofu + Terragrunt substrate, so the IaC stays the source of truth and you get a
 Kubernetes-native ordering API on top. It runs on a **management cluster** (the
 hub) and manufactures clusters into **workload accounts** (the spokes) via
 cross-account IRSA.
@@ -16,14 +16,16 @@ view, see the [Platform Reference](https://github.com/nanohype/nanohype/blob/mai
 ## The idea
 
 ```
-Cluster claim  ──►  Composition  ──►  provider-terraform Workspaces  ──►  EKS in a workload account
- (the order)        (the line)        (wrapping landing-zone modules)      (the product)
+Cluster        ──►  Composition  ──►  provider-opentofu Workspace   ──►  EKS in a workload account
+ (the order)        (the line)        (wrapping landing-zone modules)     (the product)
 ```
 
-You submit a `Cluster` CR. The composition renders provider-terraform `Workspace`
-resources that run the landing-zone `network` → `cluster` chain, and writes the
-cluster's endpoint / CA / OIDC back to the claim's status. No hand-authored
-Terragrunt directory; the line produces it.
+You apply a namespaced `Cluster` resource. The composition renders a
+provider-opentofu `Workspace` that runs the landing-zone `network` → `cluster`
+chain (via the `fleet/aws/cluster-stack` entrypoint), and writes the cluster's
+endpoint / CA / OIDC back to the `Cluster`'s status. No hand-authored Terragrunt
+directory; the line produces it. Under Crossplane v2 the namespaced `Cluster` *is*
+the API — a team applies it directly in its own namespace, no claim involved.
 
 ## Where it sits
 
@@ -34,21 +36,21 @@ Terragrunt directory; the line produces it.
 
 ## Status
 
-Scaffold. The repo shape, the `Cluster` API surface, and the composition pattern
-are established; the build (the plain-tofu entrypoint the wrap needs, the
+The repo shape, the `Cluster` API surface, and the composition pattern are
+established; the build (the plain-tofu entrypoint the wrap needs, the
 management-cluster bootstrap, cross-account vending) is in flight. See
 [`docs/architecture.md`](docs/architecture.md) for the design + the open decisions.
 
 ## Prerequisites
 
-- A management Kubernetes cluster with Crossplane v1.18+ (or v2) installed
-- `crossplane` CLI, `kubectl`, `yamllint`, `task`
+- A management Kubernetes cluster with Crossplane v2 installed
+- `crossplane` CLI (v2), `kubectl`, `yamllint`, `task`
 
 ## Commands
 
 ```bash
 task validate     # yamllint + crossplane render the examples against the compositions
-task render       # render a sample Cluster claim to the managed resources it produces
+task render       # render a sample Cluster to the managed resources it produces
 ```
 
 ## License

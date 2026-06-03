@@ -1,28 +1,32 @@
-# provider-terraform + its runtime tuning. Apply to the management cluster after
-# Crossplane itself is installed (see README.md). In the real flow an eks-gitops
+# provider-opentofu + its runtime tuning. Apply to the management cluster after
+# Crossplane v2 itself is installed (see README.md). In the real flow an eks-gitops
 # ApplicationSet syncs these onto the management cluster.
 apiVersion: pkg.crossplane.io/v1
 kind: Provider
 metadata:
-  name: provider-terraform
+  name: provider-opentofu
 spec:
-  package: xpkg.upbound.io/crossplane-contrib/provider-terraform:v0.16.0
+  package: xpkg.upbound.io/upbound/provider-opentofu:v1.1.3
   runtimeConfigRef:
-    name: provider-terraform
+    name: provider-opentofu
 ---
-# The runtime config carries two things that matter for EKS:
+# The runtime config carries three things that matter for EKS:
 #   1. The IRSA ServiceAccount — the hub's identity, annotated with the management
-#      account role it assumes (and chains from, into each workload account).
-#   2. A 60m terraform timeout — an EKS build outruns the 20m default and would
-#      otherwise be killed mid-apply, leaking a half-built cluster + a stuck lock.
+#      account role it assumes (and chains from, into each workload account). The
+#      eks-fleet-crossplane role's trust policy names this SA subject
+#      (system:serviceaccount:crossplane-system:provider-opentofu).
+#   2. --timeout=60m — an EKS build outruns the 20m default and would otherwise be
+#      killed mid-apply, leaking a half-built cluster + a stuck lock.
+#   3. --poll=1m — provider-opentofu defaults to a 10m drift/output poll; 1m keeps the
+#      Cluster status fresh as the Workspace converges.
 apiVersion: pkg.crossplane.io/v1beta1
 kind: DeploymentRuntimeConfig
 metadata:
-  name: provider-terraform
+  name: provider-opentofu
 spec:
   serviceAccountTemplate:
     metadata:
-      name: provider-terraform
+      name: provider-opentofu
       annotations:
         # set by the bootstrap to the management-account Crossplane role
         eks.amazonaws.com/role-arn: arn:aws:iam::<MGMT_ACCOUNT_ID>:role/eks-fleet-crossplane
@@ -36,4 +40,5 @@ spec:
               args:
                 - --debug
                 - --timeout=60m
+                - --poll=1m
                 - --max-reconcile-rate=5

@@ -3,7 +3,7 @@
 ## The thesis
 
 `eks-agent-platform`'s operator vends **tenants** from a `Platform` CR. `eks-fleet`
-vends **clusters** from a `Cluster` claim — the same factory pattern, one layer
+vends **clusters** from a `Cluster` resource — the same factory pattern, one layer
 up. You don't hand-author a Terragrunt directory per cluster; you place an order
 and the line produces it.
 
@@ -16,28 +16,33 @@ a cluster is*; `eks-fleet` is the Kubernetes-native ordering API that runs it.
               management account (the hub)
    ┌─────────────────────────────────────────────┐
    │  management EKS cluster                       │
-   │   Crossplane + provider-terraform + ArgoCD    │
+   │   Crossplane v2 + provider-opentofu + ArgoCD  │
    │                                               │
-   │   Cluster claim ──► Composition ──► Workspace │
-   │                                        │      │
-   └────────────────────────────────────────┼──────┘
-                                             │ assume-role (IRSA chain)
-                ┌────────────────────────────┼────────────────────────────┐
-                ▼                             ▼                            ▼
+   │   Cluster ──► Composition ──► Workspace       │
+   │                                  │            │
+   └──────────────────────────────────┼───────────┘
+                                       │ assume-role (IRSA chain)
+                ┌──────────────────────┼──────────────────────────────────┐
+                ▼                       ▼                                  ▼
         workload-dev account          workload-staging            workload-prod
         EKS (the product)             EKS                          EKS
         + per-cluster eks-agent-platform operator (its own tenant control plane)
 ```
 
 - **Hub** — one management EKS in the `management` account. The one cluster you
-  hand-author (it's what vends the rest). Runs Crossplane + provider-terraform +
-  ArgoCD; holds the `Cluster` API, the compositions, the hub ProviderConfig.
+  hand-author (it's what vends the rest). Runs Crossplane v2 + provider-opentofu +
+  ArgoCD; holds the `Cluster` API, the compositions, the hub ClusterProviderConfig.
 - **Spokes** — workload clusters, manufactured into workload accounts. Each gets
   its own `eks-agent-platform` operator (the tenant control plane) once it's up.
 
+Under Crossplane v2 the `Cluster` is a **namespaced** resource — a team applies it
+directly in its own namespace, and that resource *is* the API. There's no claim and
+no separate composite; the namespaced `Cluster` is both the order desk and the unit
+the composition reconciles.
+
 ## Wrapping the substrate (the key design choice)
 
-provider-terraform runs the **`tofu` binary** against a module — it does **not**
+provider-opentofu runs the **`tofu` binary** against a module — it does **not**
 run `terragrunt`. The `landing-zone` *components* depend on terragrunt-generated
 provider blocks and `_envcommon` dependency wiring, so a `Workspace` cannot point
 at `components/aws/cluster` directly.
@@ -45,17 +50,17 @@ at `components/aws/cluster` directly.
 So the composition's `Workspace` points at a **plain-tofu entrypoint** — a thin
 root module that wires `network → cluster` (and later `cluster-bootstrap`,
 `agent-iam`) with explicit providers + vars, the same chaining the env tree does,
-made tofu-native. **Building that entrypoint is the first build task.** Two ways:
-1. A `landing-zone/fleet/aws/cluster-stack/` tofu root that `module`-calls the existing
-   component modules (keeps everything in landing-zone). ← default
-2. A terragrunt-aware runner image for the Workspace (heavier, less standard).
+made tofu-native. That entrypoint is `landing-zone/fleet/aws/cluster-stack/`: a tofu
+root that `module`-calls the existing component modules, so everything stays in
+landing-zone. It owns the AWS provider (region + default_tags + an optional
+cross-account `assume_role`) and a partial `backend "s3" {}` block.
 
-The `Cluster` XRD's `spec.moduleSource` points at that entrypoint.
+The `Cluster` spec's `moduleSource` points at that entrypoint.
 
 ## The Cluster API maps to the substrate
 
-`apis/cluster/definition.yaml` tracks `landing-zone/components/aws/{network,cluster}`
-field-for-field:
+`apis/cluster/definition.yaml` tracks the `fleet/aws/cluster-stack` entrypoint
+inputs (which wrap `landing-zone/components/aws/{network,cluster}`) field-for-field:
 
 | Cluster spec | cluster module var | Cluster status | cluster module output |
 |---|---|---|---|
@@ -63,40 +68,61 @@ field-for-field:
 | `clusterVersion` | `cluster_version` | `certificateAuthorityData` | `cluster_certificate_authority_data` |
 | `systemNodes.*` | `system_node_*` | `oidcProviderArn` | `oidc_provider_arn` |
 | `network.vpcCidr` | (network) `vpc_cidr` | `oidcIssuer` | `oidc_issuer` |
-| `account` | → vend-role ARN (`assume_role`) | `karpenterIamRoleArn` | `karpenter_iam_role_arn` |
+| `vendRoleArn` | `assume_role_arn` | `karpenterIamRoleArn` | `karpenter_iam_role_arn` |
 
 When the cluster module gains a variable, the XRD gains the field and the
 composition adds one patch. No parallel vocabulary.
 
-## provider-terraform gotchas (designed-around)
+## provider-opentofu gotchas (designed-around)
 
 - **Timeout** — the 20m default is shorter than an EKS build (20-40m); the
-  `DeploymentRuntimeConfig` sets 60m. Without it, the apply is killed mid-flight
-  and leaks a half-built cluster + a stuck state lock.
+  `DeploymentRuntimeConfig` sets `--timeout=60m`. Without it, the apply is killed
+  mid-flight and leaks a half-built cluster + a stuck state lock.
+- **Poll interval** — provider-opentofu defaults to a 10m drift/output poll, which
+  leaves the `Cluster` status stale for minutes after an apply completes. The
+  runtime config sets `--poll=1m` so the status reflects the Workspace promptly.
 - **State** — not persisted in-pod; every Workspace uses the shared S3 backend.
+  The per-cluster state key rides on the Workspace `initArgs`
+  (`-backend-config=key=fleet/<name>/terraform.tfstate`, `-backend-config=region=<region>`,
+  plus a static bucket + `encrypt`), which complete the entrypoint's partial
+  `backend "s3" {}` block — so every `Cluster` gets an isolated state object.
 - **Git source** — `https://`, not SSH (no key in the Workspace pod).
 - **Cross-resource wiring** — if the entrypoint is split into multiple Workspaces
-  later, network→cluster outputs flow through the XR status (extra reconcile
+  later, network→cluster outputs flow through the composite status (extra reconcile
   loops). The single-entrypoint approach above avoids it.
 
-## Cross-account vending
+## Credentials and cross-account vending
 
-The hub's Crossplane SA is IRSA-bound to a management-account role
-(`eks-fleet-crossplane`). That role `sts:AssumeRole`s a `fleet-vend` role
-(resource `${env}-eks-fleet-vend`, IAM path `/eks-fleet/`) in each workload
-account — provisioned by landing-zone's `components/aws/fleet-vend/`, scoped
-trust + permissions boundary, the same shape as the operator's per-tenant IRSA.
-Picked by `spec.account` (the Composition derives the vend-role ARN, or honors an
-explicit `spec.vendRoleArn`). The 2nd AWS account enters here, and not before.
+A single cluster-scoped `ClusterProviderConfig` named `default` serves every
+account. It carries `credentials: [{filename: aws-creds.ini, source: None}]` —
+`source: None` writes no credentials file, so the provider pod's ambient IRSA (the
+`provider-opentofu` ServiceAccount's `eks.amazonaws.com/role-arn`) supplies the AWS
+SDK credential chain. Every Workspace references it via
+`providerConfigRef: {kind: ClusterProviderConfig, name: default}`.
+
+The hub's `provider-opentofu` ServiceAccount is IRSA-bound to a management-account
+role (`eks-fleet-crossplane`, trusting
+`system:serviceaccount:crossplane-system:provider-opentofu`). That role
+`sts:AssumeRole`s a `fleet-vend` role (resource `${env}-eks-fleet-vend`, IAM path
+`/eks-fleet/`) in each workload account — provisioned by landing-zone's
+`components/aws/fleet-vend/`, scoped trust + permissions boundary, the same shape as
+the operator's per-tenant IRSA. Targeting is picked by `spec.account` (the
+Composition derives the vend-role ARN, or honors an explicit `spec.vendRoleArn`),
+which feeds the entrypoint's `assume_role` var — not a per-account ProviderConfig.
+The 2nd AWS account enters here, and not before.
+
+The Workspace's kubeconfig connection secret lands in the `Cluster`'s own namespace:
+under Crossplane v2, namespaced managed resources write connection secrets locally
+alongside the resource.
 
 ## Where it plugs into the stack
 
 - **Order desk** — `portal` grows a `Cluster` form (it already registers clusters
   + stores creds). `fab` does intake/validation.
-- **Delivery** — ArgoCD on the management cluster applies the `Cluster` claims
-  (GitOps), and bootstraps each new spoke (eks-gitops addons + the operator).
+- **Delivery** — ArgoCD on the management cluster applies the namespaced `Cluster`
+  resources (GitOps), and bootstraps each new spoke (eks-gitops addons + the operator).
 - **QC** — extend `cloudgov` to audit clusters (not just tenants); Kyverno on the
-  claims.
+  `Cluster` resources.
 - **Runtime** — the management cluster's generic Crossplane/ArgoCD install rides
   in `eks-gitops` (it's just another cluster). This repo holds only the product
   definitions — mirroring the operator (eks-agent-platform) vs installs-it
@@ -105,20 +131,18 @@ explicit `spec.vendRoleArn`). The 2nd AWS account enters here, and not before.
 ## Build roadmap
 
 1. **The entrypoint** — the plain-tofu root that wraps `network → cluster`.
-2. **Rung 0** — stand up the management cluster; install Crossplane + the provider.
-3. **Rung 1 — vend one cluster, same account.** A `Cluster` claim → an EKS cluster
-   in the management account (no cross-account yet). The cluster analog of the
-   operator's first reconcile. Validate teardown (delete the claim → cluster gone).
+2. **Rung 0** — stand up the management cluster; install Crossplane v2 + provider-opentofu.
+3. **Rung 1 — vend one cluster, same account.** A namespaced `Cluster` → an EKS
+   cluster in the management account (no cross-account yet). The cluster analog of
+   the operator's first reconcile. Validate teardown (delete the `Cluster` →
+   cluster gone).
 4. **Rung 2 — cross-account.** Add the `fleet-vend` role (landing-zone
    `components/aws/fleet-vend/`); vend into workload-dev via `spec.account`.
-5. **Day-2** — once the claim API is proven, migrate the hot path to **Cluster API
-   / CAPA** for upgrade/lifecycle maturity (the XRD stays the front door).
+5. **Day-2** — once the API is proven, migrate the hot path to **Cluster API /
+   CAPA** for upgrade/lifecycle maturity (the `Cluster` resource stays the front door).
 
 ## Open decisions
 
 - Entrypoint shape (single root vs per-component Workspaces).
-- Crossplane v1 claim (`XCluster`/`Cluster`) vs v2 namespaced XR — currently the
-  claim form for compatibility; v2 is the direction.
 - Whether the per-cluster `eks-agent-platform` operator install is part of this
   composition (a follow-on Workspace / ArgoCD app) or a separate bootstrap step.
-- provider-terraform (TF 1.5.7, BSL) vs **provider-opentofu** for the runner.

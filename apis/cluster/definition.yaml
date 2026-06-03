@@ -1,18 +1,15 @@
-# The Cluster API. A namespaced `Cluster` claim is the order; the cluster-scoped
-# `XCluster` is the composite the composition reconciles. Spec fields track
-# landing-zone/components/aws/{network,cluster}/variables.tf; status fields track
-# their outputs.tf. (Crossplane v2 moves to namespaced XRs and drops the separate
-# claim — kept here as a claim for the widest compatibility; see docs/architecture.md.)
-apiVersion: apiextensions.crossplane.io/v1
+# The Cluster API. Under Crossplane v2 the namespaced composite resource IS the
+# API — users apply a `Cluster` in their team namespace; there is no separate claim.
+# Spec fields track the landing-zone fleet/aws/cluster-stack entrypoint inputs (which
+# wrap components/aws/{network,cluster}); status fields track its outputs.
+apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
-  name: xclusters.fleet.nanohype.dev
+  name: clusters.fleet.nanohype.dev
 spec:
+  scope: Namespaced
   group: fleet.nanohype.dev
   names:
-    kind: XCluster
-    plural: xclusters
-  claimNames:
     kind: Cluster
     plural: clusters
   defaultCompositionRef:
@@ -86,13 +83,13 @@ spec:
                     vpcCidr: {type: string, default: "10.0.0.0/16"}
                     maxAzs: {type: integer, default: 3}
                     natGateways: {type: integer, default: 1}
-                # --- the substrate the Workspaces run ------------------------
+                # --- the substrate the Workspace runs ------------------------
                 moduleSource:
                   type: string
                   default: "git::https://github.com/nanohype/landing-zone.git//fleet/aws/cluster-stack?ref=main"
                   description: >-
                     Git source for the plain-tofu cluster-stack entrypoint the Workspace
-                    runs (provider-terraform runs tofu, not terragrunt — see docs/architecture.md).
+                    runs (see docs/architecture.md).
               required:
                 - account
                 - region

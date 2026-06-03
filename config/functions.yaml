@@ -5,6 +5,6 @@ kind: Function
 metadata:
   name: function-patch-and-transform
   annotations:
-    render.crossplane.io/runtime-development-container-image: xpkg.upbound.io/crossplane-contrib/function-patch-and-transform:v0.8.2
+    render.crossplane.io/runtime-development-container-image: xpkg.upbound.io/crossplane-contrib/function-patch-and-transform:v0.10.6
 spec:
-  package: xpkg.upbound.io/crossplane-contrib/function-patch-and-transform:v0.8.2
+  package: xpkg.upbound.io/crossplane-contrib/function-patch-and-transform:v0.10.6
