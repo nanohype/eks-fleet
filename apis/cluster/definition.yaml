@@ -1,0 +1,113 @@
+# The Cluster API. A namespaced `Cluster` claim is the order; the cluster-scoped
+# `XCluster` is the composite the composition reconciles. Spec fields track
+# landing-zone/components/aws/{network,cluster}/variables.tf; status fields track
+# their outputs.tf. (Crossplane v2 moves to namespaced XRs and drops the separate
+# claim — kept here as a claim for the widest compatibility; see docs/architecture.md.)
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xclusters.fleet.nanohype.dev
+spec:
+  group: fleet.nanohype.dev
+  names:
+    kind: XCluster
+    plural: xclusters
+  claimNames:
+    kind: Cluster
+    plural: clusters
+  defaultCompositionRef:
+    name: cluster-aws
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                # --- placement: which spoke account/region to vend into -------
+                account:
+                  type: string
+                  description: Workload AWS account id to provision the cluster in (selects the ProviderConfig the hub assumes a role into).
+                region:
+                  type: string
+                  description: AWS region.
+                environment:
+                  type: string
+                  default: dev
+                  description: Environment tier (dev | staging | production) — prefixes resource names + tags.
+                team:
+                  type: string
+                  description: Owning team (tagging + ownership).
+                # --- cluster (landing-zone components/aws/cluster) ------------
+                clusterName:
+                  type: string
+                  default: eks
+                  description: Cluster base name; the module prefixes it with environment.
+                clusterVersion:
+                  type: string
+                  default: "1.35"
+                  description: Kubernetes version.
+                endpointPublicAccess:
+                  type: boolean
+                  default: true
+                endpointPublicAccessCidrs:
+                  type: array
+                  items: {type: string}
+                  default: []
+                  description: CIDRs allowed to reach the public API (empty = unrestricted).
+                systemNodes:
+                  type: object
+                  description: System node group (Bottlerocket / Graviton arm64).
+                  properties:
+                    instanceTypes:
+                      type: array
+                      items: {type: string}
+                      default: ["m7g.xlarge", "m6g.xlarge"]
+                    minSize: {type: integer, default: 2}
+                    maxSize: {type: integer, default: 6}
+                    desiredSize: {type: integer, default: 2}
+                    diskSize: {type: integer, default: 100}
+                # --- network (landing-zone components/aws/network) -----------
+                network:
+                  type: object
+                  description: The VPC the cluster lands in — provisioned first by the composition.
+                  properties:
+                    vpcCidr: {type: string, default: "10.0.0.0/16"}
+                    maxAzs: {type: integer, default: 3}
+                    natGateways: {type: integer, default: 1}
+                # --- the substrate the Workspaces run ------------------------
+                moduleSource:
+                  type: string
+                  default: "git::https://github.com/nanohype/landing-zone.git//fleet/entrypoints?ref=main"
+                  description: >-
+                    Base git source for the plain-tofu entrypoints the Workspaces run
+                    (provider-terraform runs tofu, not terragrunt — see docs/architecture.md).
+              required:
+                - account
+                - region
+                - team
+            status:
+              type: object
+              properties:
+                clusterName: {type: string}
+                clusterEndpoint: {type: string, description: EKS API endpoint.}
+                certificateAuthorityData: {type: string, description: Base64 cluster CA.}
+                clusterSecurityGroupId: {type: string}
+                oidcProviderArn: {type: string, description: IAM OIDC provider ARN (for tenant IRSA).}
+                oidcIssuer: {type: string, description: OIDC issuer URL (no scheme).}
+                karpenterIamRoleArn: {type: string}
+                vpcId: {type: string}
+      additionalPrinterColumns:
+        - name: REGION
+          type: string
+          jsonPath: .spec.region
+        - name: ACCOUNT
+          type: string
+          jsonPath: .spec.account
+        - name: ENDPOINT
+          type: string
+          jsonPath: .status.clusterEndpoint

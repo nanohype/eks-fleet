@@ -1,0 +1,39 @@
+# provider-terraform + its runtime tuning. Apply to the management cluster after
+# Crossplane itself is installed (see README.md). In the real flow an eks-gitops
+# ApplicationSet syncs these onto the management cluster.
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-terraform
+spec:
+  package: xpkg.upbound.io/crossplane-contrib/provider-terraform:v0.16.0
+  runtimeConfigRef:
+    name: provider-terraform
+---
+# The runtime config carries two things that matter for EKS:
+#   1. The IRSA ServiceAccount — the hub's identity, annotated with the management
+#      account role it assumes (and chains from, into each workload account).
+#   2. A 60m terraform timeout — an EKS build outruns the 20m default and would
+#      otherwise be killed mid-apply, leaking a half-built cluster + a stuck lock.
+apiVersion: pkg.crossplane.io/v1beta1
+kind: DeploymentRuntimeConfig
+metadata:
+  name: provider-terraform
+spec:
+  serviceAccountTemplate:
+    metadata:
+      name: provider-terraform
+      annotations:
+        # set by the bootstrap to the management-account Crossplane role
+        eks.amazonaws.com/role-arn: arn:aws:iam::<MGMT_ACCOUNT_ID>:role/eks-fleet-crossplane
+  deploymentTemplate:
+    spec:
+      selector: {}
+      template:
+        spec:
+          containers:
+            - name: package-runtime
+              args:
+                - --debug
+                - --timeout=60m
+                - --max-reconcile-rate=5

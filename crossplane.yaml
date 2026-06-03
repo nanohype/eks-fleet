@@ -1,0 +1,22 @@
+# This repo is a Crossplane Configuration package: the Cluster API (XRD) + the
+# composition that implements it. Build/push it with the crossplane CLI, or have
+# ArgoCD apply apis/ + compositions/ directly onto the management cluster.
+apiVersion: meta.pkg.crossplane.io/v1
+kind: Configuration
+metadata:
+  name: eks-fleet
+  annotations:
+    meta.crossplane.io/maintainer: nanohype
+    meta.crossplane.io/source: github.com/nanohype/eks-fleet
+    meta.crossplane.io/license: Apache-2.0
+    meta.crossplane.io/description: |
+      Vends EKS clusters from a declarative Cluster claim by wrapping the
+      landing-zone Terragrunt substrate via provider-terraform.
+spec:
+  crossplane:
+    version: ">=v1.18.0-0"
+  dependsOn:
+    - provider: xpkg.upbound.io/crossplane-contrib/provider-terraform
+      version: ">=v0.15.0"
+    - function: xpkg.upbound.io/crossplane-contrib/function-patch-and-transform
+      version: ">=v0.7.0"

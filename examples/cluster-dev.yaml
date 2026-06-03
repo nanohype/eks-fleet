@@ -1,0 +1,22 @@
+# Vend a dev cluster into the dev workload account. Apply to the MANAGEMENT
+# cluster; the composition runs the landing-zone cluster stack in account
+# 111111111111 and fills in this claim's status as it converges.
+apiVersion: fleet.nanohype.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: dev-eks
+  namespace: platform
+spec:
+  account: "111111111111"
+  region: us-west-2
+  environment: dev
+  team: platform
+  clusterVersion: "1.35"
+  systemNodes:
+    instanceTypes: ["m7g.xlarge"]
+    minSize: 2
+    maxSize: 6
+    desiredSize: 2
+  network:
+    vpcCidr: "10.0.0.0/16"
+    natGateways: 1

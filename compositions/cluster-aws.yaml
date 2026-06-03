@@ -1,0 +1,150 @@
+# Cluster -> one provider-terraform Workspace that runs the landing-zone cluster
+# stack (network + cluster wired inside a plain-tofu entrypoint), then maps the
+# entrypoint's outputs back to the Cluster's status.
+#
+# Why one Workspace + an entrypoint (not one Workspace per component): provider-
+# terraform runs `tofu`, not `terragrunt`, so it can't point at a landing-zone
+# component directory (those rely on terragrunt-generated providers + _envcommon
+# dependency wiring). The entrypoint is a thin tofu root that wires network ->
+# cluster with explicit vars — the same chaining the env tree does, made tofu-
+# native. Building that entrypoint is the first build task (docs/architecture.md).
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: cluster-aws
+  labels:
+    provider: aws
+    substrate: terragrunt
+spec:
+  compositeTypeRef:
+    apiVersion: fleet.nanohype.dev/v1alpha1
+    kind: XCluster
+  writeConnectionSecretsToNamespace: crossplane-system
+  mode: Pipeline
+  pipeline:
+    - step: render-workspace
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: cluster-stack
+            base:
+              apiVersion: tf.upbound.io/v1beta1
+              kind: Workspace
+              spec:
+                # NOTE: the 60m timeout + S3 backend are not optional — an EKS
+                # build outruns the 20m default and provider-terraform doesn't
+                # persist state in-pod. Timeout is set on the provider's
+                # DeploymentRuntimeConfig; the backend is configured here.
+                forProvider:
+                  source: Remote
+                  # module is patched from spec.moduleSource
+                  enableTerraformCLILogging: true
+                  # Index-ordered vars (patched below). A later move to
+                  # function-go-templating templates the whole Workspace and
+                  # drops this index coupling.
+                  vars:
+                    - key: account_id       # 0
+                    - key: region           # 1
+                    - key: environment      # 2
+                    - key: team             # 3
+                    - key: cluster_name     # 4
+                    - key: cluster_version  # 5
+                    - key: vpc_cidr         # 6
+                  backendConfig:
+                    - key: bucket
+                      value: nanohype-eks-fleet-tfstate
+                    - key: key
+                      value: ""  # patched: fleet/<name>/terraform.tfstate
+                    - key: region
+                      value: ""  # patched from spec.region
+                    - key: encrypt
+                      value: "true"
+                  writeConnectionSecretToRef:
+                    namespace: crossplane-system
+                    name: ""  # patched: <name>-kubeconfig
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.annotations[crossplane.io/external-name]
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.moduleSource
+                toFieldPath: spec.forProvider.module
+              # spec -> tofu vars
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.account
+                toFieldPath: spec.forProvider.vars[0].value
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.region
+                toFieldPath: spec.forProvider.vars[1].value
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.environment
+                toFieldPath: spec.forProvider.vars[2].value
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.team
+                toFieldPath: spec.forProvider.vars[3].value
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.clusterName
+                toFieldPath: spec.forProvider.vars[4].value
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.clusterVersion
+                toFieldPath: spec.forProvider.vars[5].value
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.network.vpcCidr
+                toFieldPath: spec.forProvider.vars[6].value
+              # placement: pick the per-account ProviderConfig (config/providers/)
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.account
+                toFieldPath: spec.providerConfigRef.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "aws-%s"
+              # state key + kubeconfig secret name, per cluster
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.forProvider.backendConfig[1].value
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "fleet/%s/terraform.tfstate"
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.region
+                toFieldPath: spec.forProvider.backendConfig[2].value
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.forProvider.writeConnectionSecretToRef.name
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-kubeconfig"
+              # entrypoint outputs -> Cluster status
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.outputs.cluster_name
+                toFieldPath: status.clusterName
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.outputs.cluster_endpoint
+                toFieldPath: status.clusterEndpoint
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.outputs.cluster_certificate_authority_data
+                toFieldPath: status.certificateAuthorityData
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.outputs.cluster_security_group_id
+                toFieldPath: status.clusterSecurityGroupId
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.outputs.oidc_provider_arn
+                toFieldPath: status.oidcProviderArn
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.outputs.oidc_issuer
+                toFieldPath: status.oidcIssuer
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.outputs.karpenter_iam_role_arn
+                toFieldPath: status.karpenterIamRoleArn
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.outputs.vpc_id
+                toFieldPath: status.vpcId
