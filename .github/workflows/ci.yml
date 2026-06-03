@@ -25,9 +25,12 @@ jobs:
         run: |
           curl -sL https://raw.githubusercontent.com/crossplane/crossplane/master/install.sh | sh
           sudo mv crossplane /usr/local/bin/
-      - name: render every example against the compositions
+      - name: render the XR fixtures against the compositions
+        # crossplane render operates on the composite (XCluster), not the Cluster
+        # claim — render the XR fixtures in examples/xr/. The claim in examples/
+        # is the product-facing form; it shares the XRD schema exercised here.
         run: |
-          for ex in examples/*.yaml; do
+          for ex in examples/xr/*.yaml; do
             echo "::group::render $ex"
             crossplane render "$ex" compositions/cluster-aws.yaml config/functions.yaml
             echo "::endgroup::"

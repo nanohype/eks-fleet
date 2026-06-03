@@ -12,18 +12,18 @@ tasks:
       - yamllint -c .yamllint.yaml .
 
   render:
-    desc: Render a sample Cluster claim to the managed resources it produces
+    desc: Render an XCluster XR fixture to the managed resources it produces
     vars:
-      EXAMPLE: '{{.EXAMPLE | default "examples/cluster-dev.yaml"}}'
+      EXAMPLE: '{{.EXAMPLE | default "examples/xr/xcluster-dev.yaml"}}'
     cmds:
       - crossplane render {{.EXAMPLE}} compositions/cluster-aws.yaml config/functions.yaml
 
   validate:
-    desc: Lint + render every example against the compositions (no cluster needed)
+    desc: Lint + render the XR fixtures against the compositions (no cluster needed)
     deps: [lint]
     cmds:
       - |
-        for ex in examples/*.yaml; do
+        for ex in examples/xr/*.yaml; do
           echo "render $ex"
           crossplane render "$ex" compositions/cluster-aws.yaml config/functions.yaml >/dev/null
         done

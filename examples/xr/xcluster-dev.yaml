@@ -1,0 +1,24 @@
+# Render fixture — NOT a thing you apply. `crossplane render` operates on the
+# composite resource (XCluster), so CI renders this against the composition to
+# catch schema/patch drift without a cluster. The product-facing form is the
+# namespaced `Cluster` claim in ../cluster-dev.yaml (what users + ArgoCD apply);
+# Crossplane turns that claim into an XCluster like this one on the management
+# cluster. Keep the spec here in sync with the claim example.
+apiVersion: fleet.nanohype.dev/v1alpha1
+kind: XCluster
+metadata:
+  name: dev-eks
+spec:
+  account: "111111111111"
+  region: us-west-2
+  environment: dev
+  team: platform
+  clusterVersion: "1.35"
+  systemNodes:
+    instanceTypes: ["m7g.xlarge"]
+    minSize: 2
+    maxSize: 6
+    desiredSize: 2
+  network:
+    vpcCidr: "10.0.0.0/16"
+    natGateways: 1
