@@ -1,5 +1,5 @@
 # Cluster -> one provider-terraform Workspace that runs the landing-zone
-# fleet/cluster-stack entrypoint (network + cluster wired tofu-natively), then
+# fleet/aws/cluster-stack entrypoint (network + cluster wired tofu-natively), then
 # maps the entrypoint's outputs back to the Cluster's status.
 #
 # provider-terraform runs `tofu`, not `terragrunt`, so the Workspace points at the
@@ -39,7 +39,7 @@ spec:
                   source: Remote
                   # module is patched from spec.moduleSource (the cluster-stack entrypoint)
                   enableTerraformCLILogging: true
-                  # Index-ordered vars matching fleet/cluster-stack/variables.tf.
+                  # Index-ordered vars matching fleet/aws/cluster-stack/variables.tf.
                   # A later move to function-go-templating drops the index coupling.
                   vars:
                     - key: region           # 0
@@ -68,7 +68,7 @@ spec:
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.moduleSource
                 toFieldPath: spec.forProvider.module
-              # spec -> tofu vars (fleet/cluster-stack/variables.tf)
+              # spec -> tofu vars (fleet/aws/cluster-stack/variables.tf)
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.region
                 toFieldPath: spec.forProvider.vars[0].value

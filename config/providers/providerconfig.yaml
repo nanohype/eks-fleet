@@ -1,6 +1,6 @@
 # One ProviderConfig for the hub. credentials = InjectedIdentity: the management
 # cluster's Crossplane ServiceAccount (IRSA, management account). It deliberately
-# declares NO provider/assume_role/backend block — the fleet/cluster-stack
+# declares NO provider/assume_role/backend block — the fleet/aws/cluster-stack
 # entrypoint owns the AWS provider (region + default_tags + optional assume_role),
 # and the Workspace supplies the S3 backendConfig.
 #

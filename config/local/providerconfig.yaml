@@ -10,7 +10,7 @@ kind: ProviderConfig
 metadata:
   name: default
 spec:
-  # Credentials only — NO configuration block. The fleet/cluster-stack entrypoint
+  # Credentials only — NO configuration block. The fleet/aws/cluster-stack entrypoint
   # already owns the provider (providers.tf) + the S3 backend (versions.tf), so a
   # provider/backend here would collide. provider-terraform writes the Secret to
   # `filename` in the workspace and points AWS_SHARED_CREDENTIALS_FILE at it; the

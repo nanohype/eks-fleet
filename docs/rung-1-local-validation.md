@@ -97,7 +97,7 @@ kubectl describe workspace                                     # tofu plan/apply
 kubectl get cluster fleet-smoke -o jsonpath='{.status}' | jq   # endpoint/OIDC fill in
 ```
 
-The Workspace runs `tofu init` (fetching `landing-zone//fleet/cluster-stack`, public)
+The Workspace runs `tofu init` (fetching `landing-zone//fleet/aws/cluster-stack`, public)
 → `apply` → ~20-40 min for the EKS build.
 
 ## 7. Validate
