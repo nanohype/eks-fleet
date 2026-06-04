@@ -28,7 +28,7 @@ spec:
                 # --- placement: which spoke account/region to vend into -------
                 account:
                   type: string
-                  description: Workload AWS account id to vend into. The Composition derives the vend-role ARN from it (or set vendRoleArn); same account as the hub = no cross-account assume.
+                  description: Workload AWS account id (records + tags). Cross-account targeting is via spec.vendRoleArn (the order desk sets the fleet-vend role ARN); empty = same-account.
                 region:
                   type: string
                   description: AWS region.
