@@ -72,7 +72,7 @@ spec:
                     - key: assume_role_arn  # 6
                       value: ""
                     - key: cluster_iam_role_path  # 7
-                      value: "/"
+                      value: "/eks-fleet/"
                   # `tofu init` args complete the entrypoint's partial S3 backend
                   # block. bucket + encrypt are static; key + region are patched per
                   # cluster, so every Cluster gets an isolated state object.
@@ -113,23 +113,11 @@ spec:
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.vendRoleArn
                 toFieldPath: spec.forProvider.vars[6].value
-              # cluster_iam_role_path: cross-account vends (vendRoleArn set) put the
-              # cluster's IAM roles under /eks-fleet/ so fleet-vend's path-scoped
-              # CreateRole gate is satisfied; same-account (vendRoleArn empty) stays
-              # at "/". Keyed off vendRoleArn — the same cross-account signal that
-              # drives assume_role above (the order desk sets vendRoleArn per account).
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.vendRoleArn
-                toFieldPath: spec.forProvider.vars[7].value
-                transforms:
-                  - type: match
-                    match:
-                      patterns:
-                        - type: regexp
-                          regexp: "^arn:"
-                          result: "/eks-fleet/"
-                      fallbackTo: Value
-                      fallbackValue: "/"
+              # cluster_iam_role_path is fixed at "/eks-fleet/" (the base above), not
+              # patched: EVERY hub vend runs through a path-gated role — the
+              # eks-fleet-crossplane hub role for same-account, a fleet-vend role for
+              # cross-account — both of which only allow CreateRole under /eks-fleet/.
+              # (Non-fleet clusters built via the env tree keep the component's "/" default.)
               # per-cluster S3 state key + region (tofu init -backend-config args)
               - type: FromCompositeFieldPath
                 fromFieldPath: metadata.name
