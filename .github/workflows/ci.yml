@@ -23,8 +23,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: install crossplane CLI
         run: |
-          curl -sL -o crossplane https://releases.crossplane.io/stable/v2.3.1/bin/linux_amd64/crank
+          url=https://releases.crossplane.io/stable/v2.3.1/bin/linux_amd64/crank
+          # -f fails on HTTP errors (no error-page saved); --retry rides out CDN hiccups
+          curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors -o crossplane "$url"
+          # a CDN error page can still slip through as HTTP 200 — verify it's a real binary
+          file crossplane | grep -q ELF || { echo "::error::crossplane download is not an ELF binary (got an error page?)"; head -c200 crossplane; exit 1; }
           chmod +x crossplane
+          ./crossplane version --client
           sudo mv crossplane /usr/local/bin/
       - name: render the Cluster examples against the composition
         # Under Crossplane v2 the namespaced Cluster IS the resource you apply — render
