@@ -32,6 +32,15 @@ a cluster is*; `eks-fleet` is the Kubernetes-native ordering API that runs it.
 - **Hub** — one management EKS in the `management` account. The one cluster you
   hand-author (it's what vends the rest). Runs Crossplane v2 + provider-opentofu +
   ArgoCD; holds the `Cluster` API, the compositions, the hub ClusterProviderConfig.
+  Apply the hub's `cluster-stack` with **`enable_eks_interface_endpoint = false`** —
+  the EKS interface endpoint's private DNS shadows the IRSA OIDC issuer
+  (`oidc.eks.<region>.amazonaws.com` → NXDOMAIN), which the in-VPC provider-opentofu
+  runner must resolve to create each vended cluster's OIDC provider
+  (`data.tls_certificate`). With it off, the hub reaches the EKS API publicly via NAT.
+  This is hub-only: vended clusters keep the endpoint (they're never provisioned from
+  inside their own VPC), so the `Cluster` XRD intentionally **omits** this knob — the
+  hub is hand-authored via `cluster-stack`, not ordered through the `Cluster` API, so it
+  doesn't fall under the "every cluster-stack var gets an XRD field" contract.
 - **Spokes** — workload clusters, manufactured into workload accounts. Each gets
   its own `eks-agent-platform` operator (the tenant control plane) once it's up.
 
