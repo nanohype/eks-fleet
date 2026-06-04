@@ -167,12 +167,16 @@ separately — they're tied to a cluster but not always in tofu state:
   makes a fresh one; the first is orphaned.
 
 `scripts/reap-orphans.sh` (`task reap-orphans PROFILE=<p> [REGION=…] [APPLY=1]`)
-sweeps both. It's **DRY-RUN by default**. Each candidate is tied to a cluster name
-(in its name or a `ClusterName` tag) and is only reaped when that cluster is **not**
-in `aws eks list-clusters`; a Karpenter rule missing the `ClusterName` tag is treated
-as failed-create debris (a healthy rule from the module always carries it). Live
-clusters' resources never match. Run it after a teardown, or periodically per
-workload account.
+sweeps both by delegating to **cloudgov**, the org governance CLI that owns orphan
+detection and remediation: `cloudgov orphans` flags dead-cluster residue and
+`cloudgov remediate --type orphans` synthesizes the delete script. Each candidate is
+tied to a cluster name (in its name or a `ClusterName` tag) and is only reaped when
+that cluster is **not** in `eks:ListClusters`; a Karpenter rule missing the
+`ClusterName` tag is treated as failed-create debris (a healthy rule from the module
+always carries it). Live clusters' resources never match. The wrapper scopes the scan
+to the cluster-residue kinds, is **DRY-RUN by default** (prints the delete script for
+review), and needs `cloudgov` + `jq` on PATH. Run it after a teardown, or periodically
+per workload account.
 
 ## Open decisions
 
