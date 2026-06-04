@@ -28,3 +28,10 @@ tasks:
           crossplane render "$ex" compositions/cluster-aws.yaml config/functions.yaml >/dev/null
         done
       - echo "All validations passed."
+
+  reap-orphans:
+    desc: "Sweep cluster resources tofu can't reach (orphan log groups + Karpenter infra). DRY-RUN unless APPLY=1. PROFILE required."
+    vars:
+      REGION: '{{.REGION | default "us-west-2"}}'
+    cmds:
+      - scripts/reap-orphans.sh --profile {{.PROFILE}} --region {{.REGION}} {{if eq .APPLY "1"}}--apply{{end}}

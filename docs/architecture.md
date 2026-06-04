@@ -150,6 +150,30 @@ alongside the resource.
 5. **Day-2** — once the API is proven, migrate the hot path to **Cluster API /
    CAPA** for upgrade/lifecycle maturity (the `Cluster` resource stays the front door).
 
+## Teardown and orphan reaping
+
+Deleting a `Cluster` runs `tofu destroy` through the Workspace, which removes
+everything in state. Two classes of resource can escape that and must be swept
+separately — they're tied to a cluster but not always in tofu state:
+
+- **EKS control-plane log groups** (`/aws/eks/<cluster>/cluster`). A clean `tofu
+  destroy` removes the tofu-owned log group, but a teardown that *wasn't* a clean
+  destroy (a hand-killed run) leaves it — and a same-named re-vend then fails with
+  `ResourceAlreadyExistsException`.
+- **Karpenter interruption infra** (the `Karpenter-<cluster>` SQS queue + the
+  `Karpenter*` EventBridge rules). If an apply created the AWS resource but errored
+  before tofu recorded it — e.g. `PutRule` succeeded but `TagResource` was denied —
+  the resource exists, isn't in state, and (for a rule) isn't tagged. The next apply
+  makes a fresh one; the first is orphaned.
+
+`scripts/reap-orphans.sh` (`task reap-orphans PROFILE=<p> [REGION=…] [APPLY=1]`)
+sweeps both. It's **DRY-RUN by default**. Each candidate is tied to a cluster name
+(in its name or a `ClusterName` tag) and is only reaped when that cluster is **not**
+in `aws eks list-clusters`; a Karpenter rule missing the `ClusterName` tag is treated
+as failed-create debris (a healthy rule from the module always carries it). Live
+clusters' resources never match. Run it after a teardown, or periodically per
+workload account.
+
 ## Open decisions
 
 - Entrypoint shape (single root vs per-component Workspaces).
