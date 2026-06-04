@@ -19,7 +19,7 @@ is free (local kind). **Time:** ~45 min, most of it the EKS build.
 ## 0. One-time: the fleet state backend
 
 provider-opentofu persists state in S3 (not the pod). Create the fleet bucket
-once in the management account (111111111111):
+once in the management account (111111111111 — your mgmt account):
 
 ```bash
 aws s3 mb s3://nanohype-eks-fleet-tfstate --region us-west-2
@@ -35,38 +35,51 @@ cd ../kx && task up      # local kind cluster
 kubectl config use-context kind-kx
 ```
 
-## 2. Install Crossplane v2 + provider-opentofu + the function
+## 2. Install Crossplane v2
 
 ```bash
 helm repo add crossplane-stable https://charts.crossplane.io/stable
-helm install crossplane crossplane-stable/crossplane -n crossplane-system --create-namespace
-
-kubectl apply -f config/local/providers.yaml   # provider-opentofu (no IRSA, 60m timeout, 1m poll)
-kubectl apply -f config/functions.yaml          # function-patch-and-transform
-kubectl -n crossplane-system wait --for=condition=Healthy provider/provider-opentofu --timeout=300s
+helm install crossplane crossplane-stable/crossplane -n crossplane-system --create-namespace --version 2.3.1
+kubectl -n crossplane-system rollout status deploy/crossplane --timeout=180s
 ```
 
-## 3. AWS credentials (the kind-vs-EKS difference)
+## 3. AWS credentials (the kind-vs-EKS difference) — BEFORE the provider
 
-kind has no IRSA, so the hub reads temp creds from a Secret:
+kind has no IRSA. The local provider runtime (step 4) mounts the `aws-creds` Secret
+and points the AWS SDK at it (`AWS_SHARED_CREDENTIALS_FILE`), so the Secret must exist
+**before** the provider pod starts:
 
 ```bash
 eval "$(aws configure export-credentials --profile fleet-admin --format env)"
 kubectl create secret generic aws-creds -n crossplane-system \
   --from-literal=credentials="$(printf '[default]\naws_access_key_id=%s\naws_secret_access_key=%s\naws_session_token=%s\n' \
     "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" "$AWS_SESSION_TOKEN")"
-
-kubectl apply -f config/local/providerconfig.yaml   # Secret-cred ClusterProviderConfig (name: default)
 ```
 
-## 4. Install the Cluster API + composition
+## 4. Install provider-opentofu + the function + the ClusterProviderConfig
 
 ```bash
+kubectl apply -f config/local/providers.yaml        # provider-opentofu; mounts aws-creds, 60m timeout, 1m poll
+kubectl apply -f config/functions.yaml              # function-patch-and-transform
+kubectl -n crossplane-system wait --for=condition=Healthy provider/provider-opentofu --timeout=300s
+kubectl apply -f config/local/providerconfig.yaml   # ClusterProviderConfig (source None; creds via the pod env)
+```
+
+## 5. Install the Cluster API + composition
+
+```bash
+kubectl create namespace platform
 kubectl apply -f apis/cluster/definition.yaml
 kubectl apply -f compositions/cluster-aws.yaml
 ```
 
-## 5. Vend a cluster (the real-spend step)
+> The Workspace fetches `landing-zone` at `?ref=main` and runs `tofu` in the
+> `fleet/aws/cluster-stack` subdir (the composition's `entrypoint`). provider-opentofu
+> v1.1.3 ships tofu 1.10.0, so `main` must carry the `>= 1.10.0` floor. Apply a fresh
+> `Cluster` (don't mutate one in place — `remotePullPolicy: IfNotPresent` caches the
+> working dir, and a pod roll mid-apply orphans resources from the Workspace's state).
+
+## 6. Vend a cluster (the real-spend step)
 
 A same-account `Cluster` — `account` is the management account, `vendRoleArn`
 omitted so the hub provisions with its own creds (no cross-account assume). Under
@@ -79,7 +92,7 @@ apiVersion: fleet.nanohype.dev/v1alpha1
 kind: Cluster
 metadata: { name: fleet-smoke, namespace: platform }
 spec:
-  account: "111111111111"
+  account: "111111111111"  # your management account
   region: us-west-2
   environment: dev
   team: platform
@@ -90,7 +103,7 @@ spec:
 kubectl apply -f rung1-cluster.yaml
 ```
 
-## 6. Watch
+## 7. Watch
 
 ```bash
 kubectl get cluster fleet-smoke -n platform -o wide               # the namespaced Cluster
@@ -99,17 +112,17 @@ kubectl describe workspace                                        # tofu plan/ap
 kubectl get cluster fleet-smoke -n platform -o jsonpath='{.status}' | jq   # endpoint/OIDC fill in
 ```
 
-The Workspace runs `tofu init` (fetching `landing-zone//fleet/aws/cluster-stack`, public)
-→ `apply` → ~20-40 min for the EKS build.
+The Workspace runs `tofu init` (fetching the public `landing-zone` repo, running in the
+`fleet/aws/cluster-stack` subdir) → `apply` → ~20-40 min for the EKS build.
 
-## 7. Validate
+## 8. Validate
 
 - `kubectl get cluster fleet-smoke -n platform` shows the status populated
   (`clusterEndpoint`, `oidcProviderArn`, `oidcIssuer`, `vpcId`).
 - `aws eks describe-cluster --name dev-eks --region us-west-2` → ACTIVE.
 - (optional) point `cloudgov` at it.
 
-## 8. Teardown + verify zero-billable
+## 9. Teardown + verify zero-billable
 
 ```bash
 kubectl delete cluster fleet-smoke -n platform   # provider-opentofu runs tofu destroy
@@ -126,10 +139,10 @@ modules the e2e tore down cleanly), the e2e harness's reaping logic in
 
 ## Verify on first run (design gaps to close while executing)
 
-- **Cred wiring** — confirm the `source: Secret` ClusterProviderConfig exposes the
-  `aws-creds` Secret to the tofu run (provider-opentofu should write the file + set
-  `AWS_SHARED_CREDENTIALS_FILE`). If the provider can't find creds, switch to env-var
-  creds injected via the DeploymentRuntimeConfig instead of the Secret file.
+- **Cred wiring (resolved)** — `source: Secret`'s written creds file isn't picked up by
+  the AWS SDK, so the local runtime config mounts the `aws-creds` Secret and sets
+  `AWS_SHARED_CREDENTIALS_FILE` (the ProviderConfig is `source: None`). This is wired in
+  `config/local/`; the Secret must exist before the provider pod starts (step 3).
 - **Backend locking** — confirm the S3 backend init succeeds with native locking;
   if it wants a lock table, add `-backend-config=use_lockfile=true` to the
   Workspace's `initArgs`.

@@ -40,9 +40,13 @@ spec:
                   name: ""  # patched: <name>-kubeconfig (lands in the Cluster's namespace)
                 forProvider:
                   source: Remote
-                  # base default = the XRD's moduleSource default; the patch below
-                  # overrides it when a Cluster sets spec.moduleSource.
-                  module: "git::https://github.com/nanohype/landing-zone.git//fleet/aws/cluster-stack?ref=main"
+                  # base default = the XRD's moduleSource default (the repo root); the
+                  # patch below overrides it when a Cluster sets spec.moduleSource.
+                  module: "git::https://github.com/nanohype/landing-zone.git?ref=main"
+                  # tofu runs in this subdir of the fetched repo. The entrypoint's
+                  # `../../../components/aws/*` relative modules need the WHOLE repo present,
+                  # so the module is the repo root (not a //subdir) and tofu is pointed here.
+                  entrypoint: fleet/aws/cluster-stack
                   enableTofuCLILogging: true
                   remotePullPolicy: IfNotPresent
                   # Index-ordered vars matching fleet/aws/cluster-stack/variables.tf.

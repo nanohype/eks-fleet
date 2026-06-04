@@ -1,21 +1,17 @@
-# Secret-cred ClusterProviderConfig for the local kind hub (kx). Replaces the
-# production source: None (kind has no IRSA) — provider-opentofu reads AWS creds from
-# the `aws-creds` Secret instead. Named `default` so the composition's Workspace
-# (providerConfigRef kind ClusterProviderConfig, name default) uses it as-is.
+# ClusterProviderConfig for the local kind hub (kx). Same `source: None` as
+# production — but where prod's creds come from the pod's IRSA identity, here they
+# come from env vars the local DeploymentRuntimeConfig (providers.yaml) injects from
+# the mounted aws-creds Secret (AWS_SHARED_CREDENTIALS_FILE → the [default] INI).
+# source: None writes no competing creds file, so the AWS SDK uses that ambient chain.
+# Named `default` so the composition's Workspace uses it as-is.
 #
-# The creds are a short-lived SSO session (see aws-creds.secret.example.yaml), so the
-# whole validation must finish within the session's lifetime. VERIFY on first run that
-# provider-opentofu exposes the creds file to the tofu run (writes `filename` + points
-# the AWS SDK at it); fallback is env-var creds via the runtime config.
+# The creds are a short-lived SSO session, so the whole validation must finish within
+# the session's lifetime; refresh by recreating the aws-creds Secret + rolling the pod.
 apiVersion: opentofu.m.upbound.io/v1beta1
 kind: ClusterProviderConfig
 metadata:
   name: default
 spec:
   credentials:
-    - filename: aws-credentials.ini
-      source: Secret
-      secretRef:
-        namespace: crossplane-system
-        name: aws-creds
-        key: credentials
+    - filename: aws-creds.ini
+      source: None

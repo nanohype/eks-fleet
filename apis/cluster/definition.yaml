@@ -78,6 +78,9 @@ spec:
                 # --- network (landing-zone components/aws/network) -----------
                 network:
                   type: object
+                  # Default the whole object: a default on a nested field alone doesn't
+                  # apply when `network` is omitted, which would pass an empty vpc_cidr.
+                  default: {vpcCidr: "10.0.0.0/16", maxAzs: 3, natGateways: 1}
                   description: The VPC the cluster lands in — provisioned first by the composition.
                   properties:
                     vpcCidr: {type: string, default: "10.0.0.0/16"}
@@ -86,10 +89,11 @@ spec:
                 # --- the substrate the Workspace runs ------------------------
                 moduleSource:
                   type: string
-                  default: "git::https://github.com/nanohype/landing-zone.git//fleet/aws/cluster-stack?ref=main"
+                  default: "git::https://github.com/nanohype/landing-zone.git?ref=main"
                   description: >-
-                    Git source for the plain-tofu cluster-stack entrypoint the Workspace
-                    runs (see docs/architecture.md).
+                    Git source for the landing-zone repo the Workspace fetches; tofu runs
+                    in the fleet/aws/cluster-stack subdir (set by the composition's
+                    entrypoint), which needs the whole repo present. See docs/architecture.md.
               required:
                 - account
                 - region
