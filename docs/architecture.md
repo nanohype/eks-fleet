@@ -178,8 +178,62 @@ to the cluster-residue kinds, is **DRY-RUN by default** (prints the delete scrip
 review), and needs `cloudgov` + `jq` on PATH. Run it after a teardown, or periodically
 per workload account.
 
-## Open decisions
+## Decided
 
-- Entrypoint shape (single root vs per-component Workspaces).
-- Whether the per-cluster `eks-agent-platform` operator install is part of this
-  composition (a follow-on Workspace / ArgoCD app) or a separate bootstrap step.
+### Entrypoint shape — single root
+
+One Crossplane `Workspace` per `Cluster` runs the whole
+`landing-zone/fleet/aws/cluster-stack` tofu root, which wires `network → cluster`
+natively (`module.cluster` consumes `module.network`'s `vpc_id` + subnet ids). We
+do not split the components into their own chained Workspaces. tofu's DAG already
+owns that ordering, so per-component Workspaces would re-encode the same graph in
+composition YAML, round-trip outputs through composite status, and fragment both
+the apply's atomicity and the per-cluster S3 state — for no upside. The "compositions
+wrap, never reimplement" line holds: one root, one state key, one `assume_role`, one
+reconcile.
+
+The scope of the rejection is precise — no splitting *within a provider boundary*.
+The cluster-stack stays AWS-only; the cluster-bootstrap step (below) pulls k8s/helm
+providers and therefore lands in a separate sibling root by provider-boundary
+necessity. That's the only multi-Workspace shape this decision allows.
+
+**Guardrail (open work, not a re-decision):** the composition today patches only
+`region`, `environment`, `team`, `cluster_name`, `cluster_version`, `vpc_cidr`, and
+`vendRoleArn → assume_role_arn`. The `Cluster` spec also advertises `systemNodes.*`,
+`endpointPublicAccess`, `endpointPublicAccessCidrs`, `network.maxAzs`, and
+`network.natGateways`, but those are **not yet patched onto the Workspace**, so they
+silently fall back to the entrypoint defaults. That matters most for
+`endpointPublicAccessCidrs`: the cluster module treats an empty list as
+`["0.0.0.0/0"]`, so a `Cluster` ordered with a CIDR allowlist still comes up with a
+public API endpoint reachable from anywhere (IAM auth still required — the
+restriction, not the cluster, is what's bypassed). Wiring the remaining fields is a
+prerequisite to advertising the `Cluster` API as complete. The list-typed fields
+(`endpointPublicAccessCidrs`, `systemNodes.instanceTypes`) can't be JSON-encoded into
+a tofu `-var` string under function-patch-and-transform, so this rides on the planned
+move to function-go-templating (which also drops the index coupling between the
+`vars[]` array and the patches).
+
+### Operator install — separate bootstrap step
+
+The Cluster Composition builds the EKS cluster and emits its identity
+(`clusterEndpoint`, `certificateAuthorityData`, `oidcProviderArn`, `oidcIssuer`) to
+`Cluster.status`. It does **not** install the `eks-agent-platform` operator or any
+addon — no helm/kubernetes provider step lives in the Composition. The operator is an
+addon, and addons land via ArgoCD reconciling the `eks-gitops` catalog onto a
+registered spoke. This keeps the eks-fleet (product definitions) vs eks-gitops
+(installs-it) boundary intact, keeps standing cluster-admin out of the hub's vend
+identity, and keeps blast radius per-cluster — a bad operator can't ride the
+Composition to every cluster at once.
+
+The mechanism, once built: a `cluster-bootstrap` sibling root (run after the cluster
+is Ready) installs Cilium + ArgoCD and writes the ArgoCD cluster `Secret` carrying the
+operator's IRSA wiring as annotations plus an `eks-agent-platform/enabled` label; the
+`eks-gitops` `addons-agent-operator` ApplicationSet selects on that label and injects
+the annotations as Helm values, so the operator deploys IRSA-bound with no account id
+in a public repo. This path is **not yet wired into the vend chain** — cluster-bootstrap
++ agent-iam are the next root to build, with `enable_agent_platform` threaded from the
+`Cluster` spec. Two things to pin before locking: the bootstrap Secret is the
+`in-cluster` entry (`https://kubernetes.default.svc`), so the model is spoke-local
+ArgoCD reconciling its own addons, not a hub ArgoCD reaching in; and whichever
+component runs cluster-bootstrap after Ready also owns spoke registration (portal
+today only records the cluster in its own inventory — it does not `argocd cluster add`).

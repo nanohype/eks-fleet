@@ -92,11 +92,12 @@ Secret) instead. The Workspace references it via
 ### Add a workload account (vend into a new spoke)
 1. Provision the `fleet-vend` role in that account (landing-zone
    `components/aws/fleet-vend/`; trusts the hub's `eks-fleet-crossplane` role).
-2. Set `spec.account` on the `Cluster` to that account — the Composition derives the
-   vend-role ARN (`spec.vendRoleArn`) and the entrypoint's `assume_role` uses it. No
-   new ClusterProviderConfig: the single `default` (source None) serves every
-   account; cross-account targeting rides on the `Cluster`, not on a per-account
-   ProviderConfig.
+2. Set `spec.vendRoleArn` on the `Cluster` to that account's `fleet-vend` role ARN —
+   the Composition patches it straight onto the entrypoint's `assume_role` (var
+   `assume_role_arn`). `spec.account` records the target account (tags/provenance);
+   it is not load-bearing for the assume-role. No new ClusterProviderConfig: the
+   single `default` (source None) serves every account; cross-account targeting rides
+   on `spec.vendRoleArn`, not on a per-account ProviderConfig.
 
 ## Validation Commands
 
