@@ -231,8 +231,17 @@ operator's IRSA wiring as annotations plus an `eks-agent-platform/enabled` label
 the annotations as Helm values, so the operator deploys IRSA-bound with no account id
 in a public repo. This path is **not yet wired into the vend chain** — cluster-bootstrap
 + agent-iam are the next root to build, with `enable_agent_platform` threaded from the
-`Cluster` spec. Two things to pin before locking: the bootstrap Secret is the
-`in-cluster` entry (`https://kubernetes.default.svc`), so the model is spoke-local
-ArgoCD reconciling its own addons, not a hub ArgoCD reaching in; and whichever
-component runs cluster-bootstrap after Ready also owns spoke registration (portal
-today only records the cluster in its own inventory — it does not `argocd cluster add`).
+`Cluster` spec.
+
+**Topology — spoke-local ArgoCD (decided).** Each vended cluster runs its own ArgoCD,
+reconciling the shared eks-gitops catalog onto itself — the bootstrap Secret is the
+`in-cluster` entry (`https://kubernetes.default.svc`), pointing ArgoCD at the spoke it
+runs on. We do not run a hub ArgoCD that reaches into every spoke: at fleet scale that
+concentrates cluster-admin to all spokes in one place (blast radius) and bottlenecks
+reconciliation on a single instance. Spoke-local scales linearly and keeps each
+reconciler scoped to its own cluster. Consequently the spoke **self-registers** —
+cluster-bootstrap writing the in-cluster Secret is the whole registration; nothing needs
+to `argocd cluster add` a spoke to a central ArgoCD. (Portal's own cluster inventory is a
+separate concern — it records the vended cluster for connection-test + tenant vending,
+not for ArgoCD.) A single-pane-of-glass view, if wanted later, is a hub-level rollup over
+the spokes' ArgoCDs, not a centralized reconciler.
