@@ -24,8 +24,11 @@ jobs:
       - name: install crossplane CLI
         run: |
           url=https://releases.crossplane.io/stable/v2.3.1/bin/linux_amd64/crank
-          # -f fails on HTTP errors (no error-page saved); --retry rides out CDN hiccups
-          curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors -o crossplane "$url"
+          # releases.crossplane.io intermittently 403s for a minute or two. -f fails on
+          # HTTP errors (no error-page saved); --retry-all-errors retries the 403 too;
+          # a wide retry window (10 × ~6s, capped at 3m) rides out the CDN blip instead
+          # of failing the run. (Bumped after the 5×3s window lost to a longer 403.)
+          curl -fsSL --retry 10 --retry-delay 6 --retry-max-time 180 --retry-all-errors -o crossplane "$url"
           # a CDN error page can still slip through as HTTP 200 — verify it's a real binary
           file crossplane | grep -q ELF || { echo "::error::crossplane download is not an ELF binary (got an error page?)"; head -c200 crossplane; exit 1; }
           chmod +x crossplane
