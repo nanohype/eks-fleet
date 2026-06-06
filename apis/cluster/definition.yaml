@@ -90,6 +90,27 @@ spec:
                     vpcCidr: {type: string, default: "10.0.0.0/16"}
                     maxAzs: {type: integer, default: 3}
                     natGateways: {type: integer, default: 1}
+                # --- bootstrap (the second, post-Ready Workspace) ------------
+                enableAgentPlatform:
+                  type: boolean
+                  default: true
+                  description: >-
+                    Install the eks-agent-platform operator via GitOps: when true,
+                    the bootstrap labels the in-cluster ArgoCD Secret so eks-gitops
+                    reconciles the operator from the per-cluster OIDC/role
+                    annotations. False installs the operator out of band (e.g. the
+                    e2e harness, to avoid GitOps racing a locally-built image).
+                    Either way the cluster is still bootstrapped (Cilium + ArgoCD +
+                    the addon catalog) — the bootstrap Workspace always renders
+                    while the composition uses function-patch-and-transform, which
+                    can't conditionally drop a resource.
+                tenantsRepoUrl:
+                  type: string
+                  default: ""
+                  description: >-
+                    SSH URL of the private tenants GitOps repo. When set, the
+                    bootstrap registers a read-only deploy key + ArgoCD repo
+                    credential so ArgoCD can pull portal-committed tenant manifests.
                 # --- the substrate the Workspace runs ------------------------
                 moduleSource:
                   type: string

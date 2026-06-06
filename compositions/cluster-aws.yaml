@@ -230,3 +230,134 @@ spec:
               - type: ToCompositeFieldPath
                 fromFieldPath: status.atProvider.outputs.vpc_id
                 toFieldPath: status.vpcId
+
+          # The post-Ready bootstrap Workspace: runs fleet/aws/cluster-bootstrap
+          # (agent-iam + Cilium/ArgoCD + the in-cluster ArgoCD Secret) so the spoke
+          # self-reconciles the eks-gitops catalog (spoke-local ArgoCD). Its cluster-
+          # identity vars patch FROM Cluster.status, which cluster-stack populates —
+          # empty until the cluster is Ready, so this Workspace naturally waits and
+          # converges by reconcile. Always rendered: function-patch-and-transform can't
+          # conditionally drop a resource, so spec.enableAgentPlatform toggles the
+          # operator label inside the bootstrap (var enable_agent_platform), not whether
+          # the bootstrap runs. State + external-name are suffixed -bootstrap so the two
+          # Workspaces never collide.
+          - name: cluster-bootstrap
+            base:
+              apiVersion: opentofu.m.upbound.io/v1beta1
+              kind: Workspace
+              spec:
+                providerConfigRef:
+                  kind: ClusterProviderConfig
+                  name: default
+                forProvider:
+                  source: Remote
+                  module: "git::https://github.com/nanohype/landing-zone.git?ref=main"
+                  entrypoint: fleet/aws/cluster-bootstrap
+                  enableTofuCLILogging: true
+                  remotePullPolicy: IfNotPresent
+                  # The patched subset of fleet/aws/cluster-bootstrap/variables.tf
+                  # (index-ordered so the patches below couple by position). The
+                  # entrypoint's other vars — external_id (fixed "eks-fleet" per the
+                  # fleet-vend trust), gitops_repo_url/branch, tags — use their
+                  # defaults and aren't surfaced on the Cluster API.
+                  vars:
+                    - key: region                              # 0
+                      value: ""
+                    - key: environment                         # 1
+                      value: ""
+                    - key: team                                # 2
+                      value: ""
+                    - key: assume_role_arn                     # 3
+                      value: ""
+                    - key: cluster_name                        # 4
+                      value: ""
+                    - key: cluster_endpoint                    # 5
+                      value: ""
+                    - key: cluster_certificate_authority_data  # 6
+                      value: ""
+                    - key: oidc_provider_arn                   # 7
+                      value: ""
+                    - key: oidc_issuer                         # 8
+                      value: ""
+                    - key: vpc_id                              # 9
+                      value: ""
+                    - key: enable_agent_platform               # 10
+                      value: "true"
+                    - key: tenants_repo_url                    # 11
+                      value: ""
+                  initArgs:
+                    - "-backend-config=bucket=nanohype-eks-fleet-tfstate"
+                    - ""  # patched [1]: -backend-config=key=fleet/<name>-bootstrap/terraform.tfstate
+                    - ""  # patched [2]: -backend-config=region=<region>
+                    - "-backend-config=encrypt=true"
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: metadata.annotations[crossplane.io/external-name]
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "%s-bootstrap"
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.moduleSource
+                toFieldPath: spec.forProvider.module
+              # spec passthroughs
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.region
+                toFieldPath: spec.forProvider.vars[0].value
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.environment
+                toFieldPath: spec.forProvider.vars[1].value
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.team
+                toFieldPath: spec.forProvider.vars[2].value
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.vendRoleArn
+                toFieldPath: spec.forProvider.vars[3].value
+              # cluster identity from status (populated by cluster-stack; empty until
+              # Ready, so these are skipped at render + on early reconciles)
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.clusterName
+                toFieldPath: spec.forProvider.vars[4].value
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.clusterEndpoint
+                toFieldPath: spec.forProvider.vars[5].value
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.certificateAuthorityData
+                toFieldPath: spec.forProvider.vars[6].value
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.oidcProviderArn
+                toFieldPath: spec.forProvider.vars[7].value
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.oidcIssuer
+                toFieldPath: spec.forProvider.vars[8].value
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.vpcId
+                toFieldPath: spec.forProvider.vars[9].value
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.enableAgentPlatform
+                toFieldPath: spec.forProvider.vars[10].value
+                transforms:
+                  - type: convert
+                    convert: {toType: string}
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.tenantsRepoUrl
+                toFieldPath: spec.forProvider.vars[11].value
+              # per-cluster state key + region (distinct -bootstrap key)
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: spec.forProvider.initArgs[1]
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "-backend-config=key=fleet/%s-bootstrap/terraform.tfstate"
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.region
+                toFieldPath: spec.forProvider.initArgs[2]
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "-backend-config=region=%s"
