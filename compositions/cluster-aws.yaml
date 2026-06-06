@@ -87,6 +87,8 @@ spec:
                       value: ""
                     - key: system_node_disk_size           # 14
                       value: ""
+                    - key: bootstrap_access_role_arn        # 15
+                      value: ""
                   # `tofu init` args complete the entrypoint's partial S3 backend
                   # block. bucket + encrypt are static; key + region are patched per
                   # cluster, so every Cluster gets an isolated state object.
@@ -174,6 +176,11 @@ spec:
                 transforms:
                   - type: convert
                     convert: {toType: string}
+              # cross-account: grant the hub role cluster-admin via an EKS access entry
+              # so the bootstrap Workspace's ambient get-token can reach the spoke API
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.bootstrapAccessRoleArn
+                toFieldPath: spec.forProvider.vars[15].value
               # cluster_iam_role_path is fixed at "/eks-fleet/" (the base above), not
               # patched: EVERY hub vend runs through a path-gated role — the
               # eks-fleet-crossplane hub role for same-account, a fleet-vend role for

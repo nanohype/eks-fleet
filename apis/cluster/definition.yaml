@@ -46,6 +46,15 @@ spec:
                     Cross-account role the entrypoint's provider assumes to provision
                     into a workload account. Empty = provision with the hub's own
                     credentials (same-account — e.g. the local kind-hub validation).
+                bootstrapAccessRoleArn:
+                  type: string
+                  default: ""
+                  description: >-
+                    For cross-account vends, the hub's Crossplane role ARN — granted
+                    cluster-admin via an EKS access entry so the bootstrap Workspace's
+                    ambient get-token can reach this cluster's API (get-token can't
+                    present the fleet-vend external_id). Empty = same-account, where
+                    the creator (the hub) is already admin.
                 # --- cluster (landing-zone components/aws/cluster) ------------
                 clusterName:
                   type: string

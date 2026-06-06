@@ -18,13 +18,13 @@ keep, tenants on top.
 - CLIs: `aws` v2, `kubectl`, `helm`, `tofu` ≥ 1.10.0, `terragrunt`, `crossplane`, `cloudgov`, `jq`.
 - Live SSO before each stage: `aws sts get-caller-identity --profile fleet-admin` (and `--profile xx` for cross-account steps). Hand SSO creds in via `! aws sso login --profile <p>`.
 
-## Known gaps before you start
+## Status before you start
 
-Three things are not yet automated; the runbook routes around them and they're tracked separately:
+Most of what this runbook originally routed around is now wired; the residue is tracked:
 
-1. **Cluster-bootstrap isn't in the vend chain.** `landing-zone/components/aws/cluster-bootstrap` (Cilium + ArgoCD + the addon Secret) is built and proven, but the Composition doesn't run it — so a vended cluster comes up bare. Stage 3 is the manual bridge (`terragrunt apply cluster-bootstrap` after the cluster is Ready). Automating it (a second Workspace in the Composition) is the next rung; the decision is recorded in `architecture.md` (operator install = separate bootstrap step).
-2. **Portal's Helm chart doesn't wire the gitops write-paths or watch-back.** To drive vends *from portal*, the chart needs the clusters-repo URL, the git SSH key, and `CLUSTER_WATCHBACK_ENABLED` + the `fleet.nanohype.dev/clusters` RBAC. Until that lands, Stage 2 vends by applying a `Cluster` CR directly (portal is optional for the first vend).
-3. **Several `Cluster` spec fields aren't patched onto the Workspace** — `systemNodes.*`, `endpointPublicAccess`, `endpointPublicAccessCidrs`, `network.maxAzs`, `network.natGateways` fall back to entrypoint defaults. An empty `endpointPublicAccessCidrs` resolves to `0.0.0.0/0`, so the API endpoint is world-reachable (IAM auth still required). Wire these before treating the Cluster API as production-complete.
+1. **Bootstrap is automatic.** Applying a `Cluster` renders a second Workspace (`fleet/aws/cluster-bootstrap`) that runs Cilium + ArgoCD + the in-cluster ArgoCD Secret once the cluster is Ready, so the spoke self-reconciles the eks-gitops catalog + the operator (spoke-local). Same-account is validated. **Cross-account** also needs `spec.bootstrapAccessRoleArn` set to the hub's Crossplane role (cluster-stack adds an EKS access entry so the hub's ambient `get-token` reaches the spoke API) — confirmed at the first rung-2 vend. The bootstrap Workspace error-loops (with a clear "cluster not Ready yet" message) until cluster-stack populates status, then converges; the explicit render-once-Ready gate rides the planned function-go-templating migration.
+2. **Portal can drive vends.** The chart wires the gitops write-paths + watch-back (`gitops.*` + `clusterWatchback.enabled`). Driving from portal is supported; a direct `Cluster` CR also works.
+3. **Cluster spec fields wired** — the scalar fields are patched, including `endpointPublicAccess`, so a **private** endpoint is orderable (the stronger control). The two **list** fields (`endpointPublicAccessCidrs`, `systemNodes.instanceTypes`) still fall back to defaults pending the function-go-templating migration — so a *public* cluster's CIDR allowlist isn't yet enforced. Use `endpointPublicAccess: false` for now where you need network restriction.
 
 ---
 
@@ -66,13 +66,13 @@ The first vend is simplest as a **direct `Cluster` CR** (portal's chart isn't wi
 
 ---
 
-## Stage 3 — Bootstrap the vended cluster's addons
+## Stage 3 — The vended cluster's addons (automatic)
 
-Goal: Cilium + ArgoCD + the addon catalog (incl. the eks-agent-platform operator) reconciled onto the new cluster, so it can run tenants. This is the **manual bridge** for gap #1.
+Goal: Cilium + ArgoCD + the addon catalog (incl. the eks-agent-platform operator) reconciled onto the new cluster, so it can run tenants. **This is now automatic** — the `Cluster` composition's second Workspace (`fleet/aws/cluster-bootstrap`, which wraps agent-iam + cluster-bootstrap) runs once cluster-stack populates `Cluster.status`. You don't run `terragrunt apply` by hand; you watch it land.
 
-1. **Pull the kubeconfig:** `kubectl get secret -n platform <name>-kubeconfig -o jsonpath='{.data.kubeconfig}' | base64 -d > /tmp/kubeconfig` and `export KUBECONFIG=/tmp/kubeconfig`.
-2. **Run cluster-bootstrap:** `terragrunt apply` in the workload env's `cluster-bootstrap` (feed it the cluster endpoint / CA / OIDC ARN / issuer from `Cluster.status`). It installs Cilium, rolls CoreDNS after Cilium is Ready (fixes the stale-ENI DNS hang), installs ArgoCD, and writes the in-cluster ArgoCD `Secret` with the `environment` label, the `eks-agent-platform/enabled` label, and the operator's IRSA annotations. **Prereq:** the `agent-iam` role (`<env>-eks-agent-platform-operator`) must exist in the account, or the operator comes up with no IRSA.
-3. **Watch the addon waves:** `kubectl -n argocd get applicationset` then `watch 'kubectl -n argocd get application -o wide'`. Waves deploy in order (networking → security → observability → ai-platform). The operator lands via `addons-agent-operator` (selects the `enabled` label, injects the OIDC annotations as Helm values) — confirm it pulls image **`:0.1.1`+** (the public multi-arch image; `:0.1.0` had an amd64-in-arm64 bug).
+1. **(Cross-account only)** ensure the `Cluster` set `spec.bootstrapAccessRoleArn` to the hub's Crossplane role — cluster-stack grants it a cluster-admin EKS access entry so the bootstrap's ambient `get-token` can reach the spoke API. Same-account needs nothing.
+2. **Watch the bootstrap Workspace converge:** `kubectl get workspace.opentofu <name>-bootstrap -n platform -w`. It errors ("cluster not Ready yet") until cluster-stack publishes the endpoint, then applies: Cilium → CoreDNS roll (fixes the stale-ENI DNS hang) → ArgoCD → the in-cluster ArgoCD `Secret` (with the `environment` + `eks-agent-platform/enabled` labels + the operator IRSA annotations).
+3. **Watch the addon waves:** pull the kubeconfig (`kubectl get secret -n platform <name>-kubeconfig -o jsonpath='{.data.kubeconfig}' | base64 -d > /tmp/kubeconfig`), then `KUBECONFIG=/tmp/kubeconfig watch 'kubectl -n argocd get application -o wide'`. Waves deploy in order (networking → security → observability → ai-platform). The operator lands via `addons-agent-operator` (selects the `enabled` label, injects the OIDC annotations as Helm values) — confirm it pulls image **`:0.1.1`+** (the public multi-arch image; `:0.1.0` had an amd64-in-arm64 bug). Set `spec.enableAgentPlatform: false` only to install the operator out of band.
 
 **Validate:**
 - `kubectl -n argocd wait --for=condition=SyncedAndHealthy application/app-of-apps --timeout=10m`.
