@@ -34,10 +34,14 @@ jobs:
       - name: render the Cluster examples against the composition
         # Under Crossplane v2 the namespaced Cluster IS the resource you apply — render
         # it directly (no claim/XR split). Catches schema/patch drift without a cluster.
+        # --crossplane-version pins the render-engine image: render otherwise defaults
+        # to "latest stable", which now resolves to the v1.20.x line (no `internal
+        # render` subcommand → "unexpected argument internal"). Pin it to the v2 line
+        # the CLI install above uses.
         run: |
           for ex in examples/*.yaml; do
             echo "::group::render $ex"
-            crossplane render "$ex" compositions/cluster-aws.yaml config/functions.yaml
+            crossplane render "$ex" compositions/cluster-aws.yaml config/functions.yaml --crossplane-version v2.3.1
             echo "::endgroup::"
           done
 

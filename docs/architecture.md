@@ -197,21 +197,20 @@ The cluster-stack stays AWS-only; the cluster-bootstrap step (below) pulls k8s/h
 providers and therefore lands in a separate sibling root by provider-boundary
 necessity. That's the only multi-Workspace shape this decision allows.
 
-**Guardrail (open work, not a re-decision):** the composition today patches only
-`region`, `environment`, `team`, `cluster_name`, `cluster_version`, `vpc_cidr`, and
-`vendRoleArn → assume_role_arn`. The `Cluster` spec also advertises `systemNodes.*`,
-`endpointPublicAccess`, `endpointPublicAccessCidrs`, `network.maxAzs`, and
-`network.natGateways`, but those are **not yet patched onto the Workspace**, so they
-silently fall back to the entrypoint defaults. That matters most for
-`endpointPublicAccessCidrs`: the cluster module treats an empty list as
-`["0.0.0.0/0"]`, so a `Cluster` ordered with a CIDR allowlist still comes up with a
-public API endpoint reachable from anywhere (IAM auth still required — the
-restriction, not the cluster, is what's bypassed). Wiring the remaining fields is a
-prerequisite to advertising the `Cluster` API as complete. The list-typed fields
-(`endpointPublicAccessCidrs`, `systemNodes.instanceTypes`) can't be JSON-encoded into
-a tofu `-var` string under function-patch-and-transform, so this rides on the planned
-move to function-go-templating (which also drops the index coupling between the
-`vars[]` array and the patches).
+**Guardrail (open work, not a re-decision):** the composition patches the scalar
+spec fields onto the Workspace — `region`, `environment`, `team`, `cluster_name`,
+`cluster_version`, `vpc_cidr`, `vendRoleArn → assume_role_arn`, `endpointPublicAccess`,
+`network.maxAzs`, `network.natGateways`, and `systemNodes.{minSize,maxSize,desiredSize,diskSize}`
+(bool/number coerce from the patched string value). Two **list-typed** fields remain
+unpatched and fall back to entrypoint defaults: `endpointPublicAccessCidrs` and
+`systemNodes.instanceTypes`. They can't be JSON-encoded into a tofu `-var` string under
+function-patch-and-transform, so they ride on the planned move to function-go-templating
+(which also drops the index coupling between the `vars[]` array and the patches). The
+security-relevant one is `endpointPublicAccessCidrs`: the cluster module treats an empty
+list as `["0.0.0.0/0"]`, so a *public* cluster ordered with a CIDR allowlist still comes
+up reachable from anywhere (IAM auth still required — the restriction is what's bypassed).
+The stronger control already works: `endpointPublicAccess: false` now yields a fully
+private API endpoint. Wiring the two list fields completes the `Cluster` API.
 
 ### Operator install — separate bootstrap step
 

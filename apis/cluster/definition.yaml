@@ -65,6 +65,10 @@ spec:
                   description: CIDRs allowed to reach the public API (empty = unrestricted).
                 systemNodes:
                   type: object
+                  # Default the whole object (like network): a default on a nested
+                  # field alone doesn't apply when systemNodes is omitted, which would
+                  # leave the patched vars empty and fail tofu's number coercion.
+                  default: {instanceTypes: ["m7g.xlarge", "m6g.xlarge"], minSize: 2, maxSize: 6, desiredSize: 2, diskSize: 100}
                   description: System node group (Bottlerocket / Graviton arm64).
                   properties:
                     instanceTypes:
