@@ -60,7 +60,7 @@ kubectl create secret generic aws-creds -n crossplane-system \
 
 ```bash
 kubectl apply -f config/local/providers.yaml        # provider-opentofu; mounts aws-creds, 60m timeout, 1m poll
-kubectl apply -f config/functions.yaml              # function-patch-and-transform
+kubectl apply -f config/functions.yaml              # function-go-templating + function-auto-ready
 kubectl -n crossplane-system wait --for=condition=Healthy provider/provider-opentofu --timeout=300s
 kubectl apply -f config/local/providerconfig.yaml   # ClusterProviderConfig (source None; creds via the pod env)
 ```
@@ -148,6 +148,7 @@ modules the e2e tore down cleanly), the e2e harness's reaping logic in
   Workspace's `initArgs`.
 - **SSO expiry** — if the session expires mid-build, refresh it and recreate the
   `aws-creds` Secret; provider-opentofu picks it up on the next reconcile.
-- **Outputs → status** — confirm `ToCompositeFieldPath` populates the `Cluster`
-  status (a known Crossplane nuance — may take an extra reconcile after apply
-  completes; the `--poll=1m` runtime arg keeps it from lagging the 10m default).
+- **Outputs → status** — confirm the composition's status write-back populates the
+  `Cluster` status from the cluster-stack Workspace's tofu outputs (a known Crossplane
+  nuance — may take an extra reconcile after apply completes; the `--poll=1m` runtime
+  arg keeps it from lagging the 10m default).

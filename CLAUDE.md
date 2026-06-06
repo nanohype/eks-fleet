@@ -21,7 +21,7 @@ eks-fleet/
 ├── config/
 │   ├── bootstrap/               # Management-cluster install: Crossplane + provider + functions
 │   ├── local/                   # Local kind hub: provider + Secret-cred ClusterProviderConfig
-│   ├── functions.yaml           # function-patch-and-transform
+│   ├── functions.yaml           # function-go-templating + function-auto-ready
 │   └── providers/               # The hub ClusterProviderConfig (single, source None)
 ├── examples/                    # Sample Cluster resources
 ├── docs/                        # Architecture + design decisions
@@ -36,14 +36,16 @@ The XRD is `apiextensions.crossplane.io/v2`, `scope: Namespaced`, `kind: Cluster
 (plural `clusters`). Under v2 the namespaced `Cluster` *is* the API — a team applies
 it directly in its own namespace. There's no claim and no separate composite; don't
 reintroduce one. The Composition stays `apiextensions.crossplane.io/v1`, `mode:
-Pipeline`, `function-patch-and-transform`.
+Pipeline` — a `function-go-templating` step renders the Workspaces (so list-typed
+vars JSON-encode and the bootstrap Workspace gates on the cluster being Ready),
+then `function-auto-ready` marks the XR ready once both Workspaces converge.
 
 ### The Cluster API mirrors the substrate
 The `Cluster` XRD's spec/status track the `fleet/aws/cluster-stack` entrypoint
 inputs (which wrap `landing-zone/components/aws/cluster`'s `variables.tf` /
 `outputs.tf`) field-for-field (kebab-case vars → camelCase spec). When the cluster
 module gains a variable, the XRD gains the matching field — the composition just
-patches it onto the `Workspace`. Don't fork the vocabulary.
+templates it onto the `Workspace` var. Don't fork the vocabulary.
 
 ### Compositions wrap, never reimplement
 A Composition renders a provider-opentofu `Workspace`
@@ -86,14 +88,15 @@ Secret) instead. The Workspace references it via
 
 ### Add/change a Cluster spec field
 1. Edit `apis/cluster/definition.yaml` (the openAPIV3Schema) to add the field.
-2. Add a patch in `compositions/cluster-aws.yaml` mapping it onto the Workspace var.
+2. Template it onto the Workspace var in `compositions/cluster-aws.yaml` (a
+   `{key, value}` entry; list-typed fields go through `toJson | quote`).
 3. `task validate` — yamllint + render the examples.
 
 ### Add a workload account (vend into a new spoke)
 1. Provision the `fleet-vend` role in that account (landing-zone
    `components/aws/fleet-vend/`; trusts the hub's `eks-fleet-crossplane` role).
 2. Set `spec.vendRoleArn` on the `Cluster` to that account's `fleet-vend` role ARN —
-   the Composition patches it straight onto the entrypoint's `assume_role` (var
+   the Composition templates it straight onto the entrypoint's `assume_role` (var
    `assume_role_arn`). `spec.account` records the target account (tags/provenance);
    it is not load-bearing for the assume-role. No new ClusterProviderConfig: the
    single `default` (source None) serves every account; cross-account targeting rides
@@ -109,7 +112,7 @@ task render      # render a sample Cluster → the managed resources
 ## CI
 
 - PR + push to `main` → `.github/workflows/ci.yml`: yamllint, then `crossplane render`
-  each example against the compositions (catches schema/patch drift without a cluster).
+  each example against the compositions (catches schema/template drift without a cluster).
 
 ## Claude Code Tooling
 

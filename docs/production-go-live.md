@@ -20,11 +20,11 @@ keep, tenants on top.
 
 ## Status before you start
 
-Most of what this runbook originally routed around is now wired; the residue is tracked:
+What the vend chain handles for you, and what you still set by hand:
 
-1. **Bootstrap is automatic.** Applying a `Cluster` renders a second Workspace (`fleet/aws/cluster-bootstrap`) that runs Cilium + ArgoCD + the in-cluster ArgoCD Secret once the cluster is Ready, so the spoke self-reconciles the eks-gitops catalog + the operator (spoke-local). Same-account is validated. **Cross-account** also needs `spec.bootstrapAccessRoleArn` set to the hub's Crossplane role (cluster-stack adds an EKS access entry so the hub's ambient `get-token` reaches the spoke API) — confirmed at the first rung-2 vend. The bootstrap Workspace error-loops (with a clear "cluster not Ready yet" message) until cluster-stack populates status, then converges; the explicit render-once-Ready gate rides the planned function-go-templating migration.
+1. **Bootstrap is automatic.** Applying a `Cluster` renders a second Workspace (`fleet/aws/cluster-bootstrap`) that runs Cilium + ArgoCD + the in-cluster ArgoCD Secret once the cluster is Ready, so the spoke self-reconciles the eks-gitops catalog + the operator (spoke-local). Same-account is validated. **Cross-account** also needs `spec.bootstrapAccessRoleArn` set to the hub's Crossplane role (cluster-stack adds an EKS access entry so the hub's ambient `get-token` reaches the spoke API) — confirmed at the first rung-2 vend. The bootstrap Workspace is gated on `Cluster.status.clusterEndpoint`: the composition's `function-go-templating` step only renders it once cluster-stack publishes the endpoint, so it never plans against an empty endpoint.
 2. **Portal can drive vends.** The chart wires the gitops write-paths + watch-back (`gitops.*` + `clusterWatchback.enabled`). Driving from portal is supported; a direct `Cluster` CR also works.
-3. **Cluster spec fields wired** — the scalar fields are patched, including `endpointPublicAccess`, so a **private** endpoint is orderable (the stronger control). The two **list** fields (`endpointPublicAccessCidrs`, `systemNodes.instanceTypes`) still fall back to defaults pending the function-go-templating migration — so a *public* cluster's CIDR allowlist isn't yet enforced. Use `endpointPublicAccess: false` for now where you need network restriction.
+3. **Cluster spec fields wired** — every field reaches the cluster, scalars and both **list** fields (`endpointPublicAccessCidrs`, `systemNodes.instanceTypes`), which the `function-go-templating` step JSON-encodes into the tofu vars. A *public* cluster's CIDR allowlist is enforced (empty = unrestricted), and `endpointPublicAccess: false` yields a fully private endpoint (the stronger control). See `examples/cluster-restricted.yaml` for the restricted/cross-account shape.
 
 ---
 
@@ -53,11 +53,11 @@ Goal: a standing management EKS cluster running Crossplane v2 + provider-opentof
 
 Goal: one real, standing EKS cluster in the workload account, vended through the hub.
 
-The first vend is simplest as a **direct `Cluster` CR** (portal's chart isn't wired for the vend path yet — see gap #2). Driving it from portal is optional and additive.
+The first vend is simplest as a **direct `Cluster` CR**. Driving it from portal works too (the chart wires the vend path — see status #2) but is optional and additive; the direct CR keeps the first run legible.
 
-1. **Apply a `Cluster`** in the `platform` namespace — start from `eks-fleet/examples/`. For cross-account, set `spec.vendRoleArn` to the `dev-eks-fleet-vend` role ARN (from SSM). Required: `account`, `region`, `team`. (Node sizing + public-access CIDRs aren't patched yet — gap #3 — so they take entrypoint defaults.)
+1. **Apply a `Cluster`** in the `platform` namespace — start from `eks-fleet/examples/`. For cross-account, set `spec.vendRoleArn` to the `dev-eks-fleet-vend` role ARN (from SSM). Required: `account`, `region`, `team`. Node sizing, instance types, and the public-access CIDR allowlist are all honored (anything omitted takes the entrypoint default).
 2. **Watch it vend:** `kubectl describe cluster <name> -n platform` and the rendered `workspace.opentofu`. Crossplane fetches `landing-zone@main`, runs `tofu apply` in `fleet/aws/cluster-stack/`, and populates `Cluster.status` (`clusterEndpoint`, `certificateAuthorityData`, `oidcProviderArn`, `oidcIssuer`). Expect 20–40m.
-3. **(Optional) Drive it from portal instead** once the chart is wired (gap #2): deploy portal on the hub with `CLUSTER_WATCHBACK_ENABLED=true` + `GITOPS_CLUSTERS_REPO_URL` + the git SSH key + the `fleet.nanohype.dev/clusters` RBAC. Order via the Provision UI; the cluster-apply worker commits the CR to `nanohype/clusters`, the hub's `clusters-appset` (in eks-gitops) applies it, and the watch-back auto-registers the cluster as `eks_iam` once its endpoint+CA are up.
+3. **(Optional) Drive it from portal instead** (the chart wires this — status #2): deploy portal on the hub with `CLUSTER_WATCHBACK_ENABLED=true` + `GITOPS_CLUSTERS_REPO_URL` + the git SSH key + the `fleet.nanohype.dev/clusters` RBAC. Order via the Provision UI; the cluster-apply worker commits the CR to `nanohype/clusters`, the hub's `clusters-appset` (in eks-gitops) applies it, and the watch-back auto-registers the cluster as `eks_iam` once its endpoint+CA are up.
 
 **Validate:**
 - `kubectl get cluster <name> -n platform -o jsonpath='{.status.clusterEndpoint}'` → non-empty.

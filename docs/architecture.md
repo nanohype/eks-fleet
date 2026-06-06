@@ -80,7 +80,7 @@ inputs (which wrap `landing-zone/components/aws/{network,cluster}`) field-for-fi
 | `vendRoleArn` | `assume_role_arn` | `karpenterIamRoleArn` | `karpenter_iam_role_arn` |
 
 When the cluster module gains a variable, the XRD gains the field and the
-composition adds one patch. No parallel vocabulary.
+composition templates one more var. No parallel vocabulary.
 
 ## provider-opentofu gotchas (designed-around)
 
@@ -197,41 +197,45 @@ The cluster-stack stays AWS-only; the cluster-bootstrap step (below) pulls k8s/h
 providers and therefore lands in a separate sibling root by provider-boundary
 necessity. That's the only multi-Workspace shape this decision allows.
 
-**Guardrail (open work, not a re-decision):** the composition patches the scalar
-spec fields onto the Workspace — `region`, `environment`, `team`, `cluster_name`,
-`cluster_version`, `vpc_cidr`, `vendRoleArn → assume_role_arn`, `endpointPublicAccess`,
-`network.maxAzs`, `network.natGateways`, and `systemNodes.{minSize,maxSize,desiredSize,diskSize}`
-(bool/number coerce from the patched string value). Two **list-typed** fields remain
-unpatched and fall back to entrypoint defaults: `endpointPublicAccessCidrs` and
-`systemNodes.instanceTypes`. They can't be JSON-encoded into a tofu `-var` string under
-function-patch-and-transform, so they ride on the planned move to function-go-templating
-(which also drops the index coupling between the `vars[]` array and the patches). The
-security-relevant one is `endpointPublicAccessCidrs`: the cluster module treats an empty
-list as `["0.0.0.0/0"]`, so a *public* cluster ordered with a CIDR allowlist still comes
-up reachable from anywhere (IAM auth still required — the restriction is what's bypassed).
-The stronger control already works: `endpointPublicAccess: false` now yields a fully
-private API endpoint. Wiring the two list fields completes the `Cluster` API.
+**How the vars are rendered:** a `function-go-templating` step templates every spec
+field onto the Workspace as a `{key, value}` var — the scalars (`region`, `environment`,
+`team`, `cluster_name`, `cluster_version`, `vpc_cidr`, `vendRoleArn → assume_role_arn`,
+`endpointPublicAccess`, `network.maxAzs`, `network.natGateways`, and
+`systemNodes.{minSize,maxSize,desiredSize,diskSize}`) as quoted strings (tofu coerces
+bool/number from the string value), and the two **list-typed** fields —
+`endpointPublicAccessCidrs` and `systemNodes.instanceTypes` — as JSON via `toJson | quote`.
+provider-opentofu passes vars as `-var=key=value` flags, and tofu parses a `-var` value
+of `["a","b"]` as a real `list(string)`, so the JSON encoding round-trips — which is how
+the security-relevant `endpointPublicAccessCidrs` allowlist reaches the cluster (the
+cluster module treats an empty list as `["0.0.0.0/0"]`, so an empty allowlist =
+unrestricted; a set one restricts the public API). `endpointPublicAccess: false` remains
+the stronger control — a fully private API endpoint. Spec lookups use `dig` so an explicit
+`false` / `0` / empty list is honored, not collapsed to the default. Vars are keyed by name
+(not a position-coupled `vars[]` index), so adding a field is a one-line template edit.
 
-### Operator install — separate bootstrap step
+### Operator install — a separate bootstrap Workspace
 
-The Cluster Composition builds the EKS cluster and emits its identity
-(`clusterEndpoint`, `certificateAuthorityData`, `oidcProviderArn`, `oidcIssuer`) to
-`Cluster.status`. It does **not** install the `eks-agent-platform` operator or any
-addon — no helm/kubernetes provider step lives in the Composition. The operator is an
-addon, and addons land via ArgoCD reconciling the `eks-gitops` catalog onto a
-registered spoke. This keeps the eks-fleet (product definitions) vs eks-gitops
-(installs-it) boundary intact, keeps standing cluster-admin out of the hub's vend
-identity, and keeps blast radius per-cluster — a bad operator can't ride the
-Composition to every cluster at once.
+cluster-stack builds the EKS cluster and emits its identity (`clusterEndpoint`,
+`certificateAuthorityData`, `oidcProviderArn`, `oidcIssuer`) to `Cluster.status`. It is
+AWS-only — no helm/kubernetes provider, no operator, no addon. Cluster addons (including
+the `eks-agent-platform` operator) land via ArgoCD reconciling the `eks-gitops` catalog
+onto a registered spoke, not from the cluster definition. This keeps the eks-fleet
+(product definitions) vs eks-gitops (installs-it) boundary intact, keeps standing
+cluster-admin out of the hub's vend identity, and keeps blast radius per-cluster — a bad
+operator can't ride the Composition to every cluster at once.
 
-The mechanism, once built: a `cluster-bootstrap` sibling root (run after the cluster
-is Ready) installs Cilium + ArgoCD and writes the ArgoCD cluster `Secret` carrying the
-operator's IRSA wiring as annotations plus an `eks-agent-platform/enabled` label; the
-`eks-gitops` `addons-agent-operator` ApplicationSet selects on that label and injects
-the annotations as Helm values, so the operator deploys IRSA-bound with no account id
-in a public repo. This path is **not yet wired into the vend chain** — cluster-bootstrap
-+ agent-iam are the next root to build, with `enable_agent_platform` threaded from the
-`Cluster` spec.
+The bridge from "cluster exists" to "cluster reconciles the catalog" is the
+**cluster-bootstrap Workspace** — a second provider-opentofu root the composition renders
+once the cluster publishes its endpoint to `Cluster.status` (its k8s/helm/kubectl providers
+are why it's a sibling root, not folded into AWS-only cluster-stack). It runs the
+landing-zone `fleet/aws/cluster-bootstrap` entrypoint (agent-iam + the cluster-bootstrap
+component): installs Cilium + ArgoCD and writes the in-cluster ArgoCD `Secret` carrying the
+operator's IRSA wiring as annotations plus an `eks-agent-platform/enabled` label. The
+`eks-gitops` `addons-agent-operator` ApplicationSet selects on that label and injects the
+annotations as Helm values, so the operator deploys IRSA-bound with no account id in a
+public repo. `spec.enableAgentPlatform` toggles whether that label is written (false
+installs the operator out of band, e.g. the e2e harness); either way the cluster is still
+bootstrapped (Cilium + ArgoCD + the catalog).
 
 **Topology — spoke-local ArgoCD (decided).** Each vended cluster runs its own ArgoCD,
 reconciling the shared eks-gitops catalog onto itself — the bootstrap Secret is the

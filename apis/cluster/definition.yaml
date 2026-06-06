@@ -110,9 +110,9 @@ spec:
                     annotations. False installs the operator out of band (e.g. the
                     e2e harness, to avoid GitOps racing a locally-built image).
                     Either way the cluster is still bootstrapped (Cilium + ArgoCD +
-                    the addon catalog) — the bootstrap Workspace always renders
-                    while the composition uses function-patch-and-transform, which
-                    can't conditionally drop a resource.
+                    the addon catalog): this flag only toggles the operator's GitOps
+                    label on the in-cluster ArgoCD Secret — not whether the bootstrap
+                    Workspace runs (it always renders once the cluster is Ready).
                 tenantsRepoUrl:
                   type: string
                   default: ""

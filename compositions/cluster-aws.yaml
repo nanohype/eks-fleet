@@ -1,13 +1,18 @@
-# Cluster -> one provider-opentofu Workspace that runs the landing-zone
-# fleet/aws/cluster-stack entrypoint (network + cluster wired tofu-natively), then
-# maps the entrypoint's outputs back to the Cluster's status.
+# Cluster -> two provider-opentofu Workspaces, rendered with function-go-templating:
+#   cluster-stack     (always) runs landing-zone fleet/aws/cluster-stack (network + cluster)
+#   cluster-bootstrap (gated)   runs fleet/aws/cluster-bootstrap (agent-iam + Cilium/ArgoCD),
+#                               rendered once the cluster publishes its endpoint to
+#                               Cluster.status, so it never plans against an empty endpoint.
 #
-# provider-opentofu runs `tofu` against the plain-tofu entrypoint (not a component
-# directory). The entrypoint owns the AWS provider (region + default_tags + an
-# optional cross-account assume_role) and the S3 backend block, so a single
-# ClusterProviderConfig (source None = the hub's IRSA) serves every account; the
-# per-cluster account targeting rides on the assume_role_arn var, and the per-cluster
-# state key rides on initArgs, below.
+# Go-templating renders the Workspace vars directly: scalars as quoted strings (tofu coerces
+# bool/number from the string), and list-typed vars (endpointPublicAccessCidrs — the public-API
+# allowlist — and systemNodes.instanceTypes) JSON-encoded via toJson so they reach tofu as real
+# lists. Spec lookups use `dig` (default only a genuinely-missing key), so an explicit false / 0 /
+# empty list is honored rather than collapsed to the default. function-auto-ready (the second
+# pipeline step) marks the XR ready once both Workspaces converge.
+#
+# A single ClusterProviderConfig (source None = the hub's IRSA) serves every account; per-cluster
+# account targeting rides on assume_role_arn (spec.vendRoleArn), per-cluster state on initArgs.
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
@@ -21,350 +26,136 @@ spec:
     kind: Cluster
   mode: Pipeline
   pipeline:
-    - step: render-workspace
+    - step: render
       functionRef:
-        name: function-patch-and-transform
+        name: function-go-templating
       input:
-        apiVersion: pt.fn.crossplane.io/v1beta1
-        kind: Resources
-        resources:
-          - name: cluster-stack
-            base:
-              apiVersion: opentofu.m.upbound.io/v1beta1
-              kind: Workspace
-              spec:
-                providerConfigRef:
-                  kind: ClusterProviderConfig
-                  name: default
-                writeConnectionSecretToRef:
-                  name: ""  # patched: <name>-kubeconfig (lands in the Cluster's namespace)
-                forProvider:
-                  source: Remote
-                  # base default = the XRD's moduleSource default (the repo root); the
-                  # patch below overrides it when a Cluster sets spec.moduleSource.
-                  module: "git::https://github.com/nanohype/landing-zone.git?ref=main"
-                  # tofu runs in this subdir of the fetched repo. The entrypoint's
-                  # `../../../components/aws/*` relative modules need the WHOLE repo present,
-                  # so the module is the repo root (not a //subdir) and tofu is pointed here.
-                  entrypoint: fleet/aws/cluster-stack
-                  enableTofuCLILogging: true
-                  remotePullPolicy: IfNotPresent
-                  # Index-ordered vars matching fleet/aws/cluster-stack/variables.tf.
-                  # tofu binds by key, not position — the indices only couple the
-                  # patches below to these entries. A later move to function-go-templating
-                  # drops the coupling.
-                  # value: "" base defaults keep the required vars[].value present at
-                  # render (crossplane render doesn't apply XRD defaults); the patches
-                  # below override them, and at apply the XRD defaults populate the rest.
-                  vars:
-                    - key: region           # 0
-                      value: ""
-                    - key: environment      # 1
-                      value: ""
-                    - key: team             # 2
-                      value: ""
-                    - key: cluster_name     # 3
-                      value: ""
-                    - key: cluster_version  # 4
-                      value: ""
-                    - key: vpc_cidr         # 5
-                      value: ""
-                    - key: assume_role_arn  # 6
-                      value: ""
-                    - key: cluster_iam_role_path  # 7
-                      value: "/eks-fleet/"
-                    - key: cluster_endpoint_public_access  # 8
-                      value: ""
-                    - key: max_azs                         # 9
-                      value: ""
-                    - key: nat_gateways                    # 10
-                      value: ""
-                    - key: system_node_min_size            # 11
-                      value: ""
-                    - key: system_node_max_size            # 12
-                      value: ""
-                    - key: system_node_desired_size        # 13
-                      value: ""
-                    - key: system_node_disk_size           # 14
-                      value: ""
-                    - key: bootstrap_access_role_arn        # 15
-                      value: ""
-                  # `tofu init` args complete the entrypoint's partial S3 backend
-                  # block. bucket + encrypt are static; key + region are patched per
-                  # cluster, so every Cluster gets an isolated state object.
-                  initArgs:
-                    - "-backend-config=bucket=nanohype-eks-fleet-tfstate"
-                    - ""  # patched [1]: -backend-config=key=fleet/<name>/terraform.tfstate
-                    - ""  # patched [2]: -backend-config=region=<region>
-                    - "-backend-config=encrypt=true"
-            patches:
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.annotations[crossplane.io/external-name]
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.moduleSource
-                toFieldPath: spec.forProvider.module
-              # spec -> tofu vars (fleet/aws/cluster-stack/variables.tf)
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.region
-                toFieldPath: spec.forProvider.vars[0].value
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.environment
-                toFieldPath: spec.forProvider.vars[1].value
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.team
-                toFieldPath: spec.forProvider.vars[2].value
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.clusterName
-                toFieldPath: spec.forProvider.vars[3].value
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.clusterVersion
-                toFieldPath: spec.forProvider.vars[4].value
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.network.vpcCidr
-                toFieldPath: spec.forProvider.vars[5].value
-              # spec.vendRoleArn -> the entrypoint's provider assume_role (cross-
-              # account). Empty (default) = no assume_role; the entrypoint uses the
-              # hub's own credentials, which is the same-account / kind-hub path.
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.vendRoleArn
-                toFieldPath: spec.forProvider.vars[6].value
-              # Scalar cluster knobs -> tofu vars. The patched value is a string;
-              # tofu coerces "true"/"3" to bool/number. (The list-typed fields —
-              # endpointPublicAccessCidrs + systemNodes.instanceTypes — can't be
-              # JSON-encoded into a -var string under function-patch-and-transform;
-              # they ride on the function-go-templating migration, tracked separately.)
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.endpointPublicAccess
-                toFieldPath: spec.forProvider.vars[8].value
-                transforms:
-                  - type: convert
-                    convert: {toType: string}
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.network.maxAzs
-                toFieldPath: spec.forProvider.vars[9].value
-                transforms:
-                  - type: convert
-                    convert: {toType: string}
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.network.natGateways
-                toFieldPath: spec.forProvider.vars[10].value
-                transforms:
-                  - type: convert
-                    convert: {toType: string}
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.systemNodes.minSize
-                toFieldPath: spec.forProvider.vars[11].value
-                transforms:
-                  - type: convert
-                    convert: {toType: string}
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.systemNodes.maxSize
-                toFieldPath: spec.forProvider.vars[12].value
-                transforms:
-                  - type: convert
-                    convert: {toType: string}
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.systemNodes.desiredSize
-                toFieldPath: spec.forProvider.vars[13].value
-                transforms:
-                  - type: convert
-                    convert: {toType: string}
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.systemNodes.diskSize
-                toFieldPath: spec.forProvider.vars[14].value
-                transforms:
-                  - type: convert
-                    convert: {toType: string}
-              # cross-account: grant the hub role cluster-admin via an EKS access entry
-              # so the bootstrap Workspace's ambient get-token can reach the spoke API
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.bootstrapAccessRoleArn
-                toFieldPath: spec.forProvider.vars[15].value
-              # cluster_iam_role_path is fixed at "/eks-fleet/" (the base above), not
-              # patched: EVERY hub vend runs through a path-gated role — the
-              # eks-fleet-crossplane hub role for same-account, a fleet-vend role for
-              # cross-account — both of which only allow CreateRole under /eks-fleet/.
-              # (Non-fleet clusters built via the env tree keep the component's "/" default.)
-              # per-cluster S3 state key + region (tofu init -backend-config args)
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: spec.forProvider.initArgs[1]
-                transforms:
-                  - type: string
-                    string:
-                      type: Format
-                      fmt: "-backend-config=key=fleet/%s/terraform.tfstate"
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.region
-                toFieldPath: spec.forProvider.initArgs[2]
-                transforms:
-                  - type: string
-                    string:
-                      type: Format
-                      fmt: "-backend-config=region=%s"
-              # kubeconfig secret name, per cluster
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: spec.writeConnectionSecretToRef.name
-                transforms:
-                  - type: string
-                    string:
-                      type: Format
-                      fmt: "%s-kubeconfig"
-              # entrypoint outputs -> Cluster status
-              - type: ToCompositeFieldPath
-                fromFieldPath: status.atProvider.outputs.cluster_name
-                toFieldPath: status.clusterName
-              - type: ToCompositeFieldPath
-                fromFieldPath: status.atProvider.outputs.cluster_endpoint
-                toFieldPath: status.clusterEndpoint
-              - type: ToCompositeFieldPath
-                fromFieldPath: status.atProvider.outputs.cluster_certificate_authority_data
-                toFieldPath: status.certificateAuthorityData
-              - type: ToCompositeFieldPath
-                fromFieldPath: status.atProvider.outputs.cluster_security_group_id
-                toFieldPath: status.clusterSecurityGroupId
-              - type: ToCompositeFieldPath
-                fromFieldPath: status.atProvider.outputs.oidc_provider_arn
-                toFieldPath: status.oidcProviderArn
-              - type: ToCompositeFieldPath
-                fromFieldPath: status.atProvider.outputs.oidc_issuer
-                toFieldPath: status.oidcIssuer
-              - type: ToCompositeFieldPath
-                fromFieldPath: status.atProvider.outputs.karpenter_iam_role_arn
-                toFieldPath: status.karpenterIamRoleArn
-              - type: ToCompositeFieldPath
-                fromFieldPath: status.atProvider.outputs.vpc_id
-                toFieldPath: status.vpcId
-
-          # The post-Ready bootstrap Workspace: runs fleet/aws/cluster-bootstrap
-          # (agent-iam + Cilium/ArgoCD + the in-cluster ArgoCD Secret) so the spoke
-          # self-reconciles the eks-gitops catalog (spoke-local ArgoCD). Its cluster-
-          # identity vars patch FROM Cluster.status, which cluster-stack populates —
-          # empty until the cluster is Ready, so this Workspace naturally waits and
-          # converges by reconcile. Always rendered: function-patch-and-transform can't
-          # conditionally drop a resource, so spec.enableAgentPlatform toggles the
-          # operator label inside the bootstrap (var enable_agent_platform), not whether
-          # the bootstrap runs. State + external-name are suffixed -bootstrap so the two
-          # Workspaces never collide.
-          - name: cluster-bootstrap
-            base:
-              apiVersion: opentofu.m.upbound.io/v1beta1
-              kind: Workspace
-              spec:
-                providerConfigRef:
-                  kind: ClusterProviderConfig
-                  name: default
-                forProvider:
-                  source: Remote
-                  module: "git::https://github.com/nanohype/landing-zone.git?ref=main"
-                  entrypoint: fleet/aws/cluster-bootstrap
-                  enableTofuCLILogging: true
-                  remotePullPolicy: IfNotPresent
-                  # The patched subset of fleet/aws/cluster-bootstrap/variables.tf
-                  # (index-ordered so the patches below couple by position). The
-                  # entrypoint's other vars — external_id (fixed "eks-fleet" per the
-                  # fleet-vend trust), gitops_repo_url/branch, tags — use their
-                  # defaults and aren't surfaced on the Cluster API.
-                  vars:
-                    - key: region                              # 0
-                      value: ""
-                    - key: environment                         # 1
-                      value: ""
-                    - key: team                                # 2
-                      value: ""
-                    - key: assume_role_arn                     # 3
-                      value: ""
-                    - key: cluster_name                        # 4
-                      value: ""
-                    - key: cluster_endpoint                    # 5
-                      value: ""
-                    - key: cluster_certificate_authority_data  # 6
-                      value: ""
-                    - key: oidc_provider_arn                   # 7
-                      value: ""
-                    - key: oidc_issuer                         # 8
-                      value: ""
-                    - key: vpc_id                              # 9
-                      value: ""
-                    - key: enable_agent_platform               # 10
-                      value: "true"
-                    - key: tenants_repo_url                    # 11
-                      value: ""
-                  initArgs:
-                    - "-backend-config=bucket=nanohype-eks-fleet-tfstate"
-                    - ""  # patched [1]: -backend-config=key=fleet/<name>-bootstrap/terraform.tfstate
-                    - ""  # patched [2]: -backend-config=region=<region>
-                    - "-backend-config=encrypt=true"
-            patches:
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: metadata.annotations[crossplane.io/external-name]
-                transforms:
-                  - type: string
-                    string:
-                      type: Format
-                      fmt: "%s-bootstrap"
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.moduleSource
-                toFieldPath: spec.forProvider.module
-              # spec passthroughs
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.region
-                toFieldPath: spec.forProvider.vars[0].value
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.environment
-                toFieldPath: spec.forProvider.vars[1].value
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.team
-                toFieldPath: spec.forProvider.vars[2].value
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.vendRoleArn
-                toFieldPath: spec.forProvider.vars[3].value
-              # cluster identity from status (populated by cluster-stack; empty until
-              # Ready, so these are skipped at render + on early reconciles)
-              - type: FromCompositeFieldPath
-                fromFieldPath: status.clusterName
-                toFieldPath: spec.forProvider.vars[4].value
-              - type: FromCompositeFieldPath
-                fromFieldPath: status.clusterEndpoint
-                toFieldPath: spec.forProvider.vars[5].value
-              - type: FromCompositeFieldPath
-                fromFieldPath: status.certificateAuthorityData
-                toFieldPath: spec.forProvider.vars[6].value
-              - type: FromCompositeFieldPath
-                fromFieldPath: status.oidcProviderArn
-                toFieldPath: spec.forProvider.vars[7].value
-              - type: FromCompositeFieldPath
-                fromFieldPath: status.oidcIssuer
-                toFieldPath: spec.forProvider.vars[8].value
-              - type: FromCompositeFieldPath
-                fromFieldPath: status.vpcId
-                toFieldPath: spec.forProvider.vars[9].value
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.enableAgentPlatform
-                toFieldPath: spec.forProvider.vars[10].value
-                transforms:
-                  - type: convert
-                    convert: {toType: string}
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.tenantsRepoUrl
-                toFieldPath: spec.forProvider.vars[11].value
-              # per-cluster state key + region (distinct -bootstrap key)
-              - type: FromCompositeFieldPath
-                fromFieldPath: metadata.name
-                toFieldPath: spec.forProvider.initArgs[1]
-                transforms:
-                  - type: string
-                    string:
-                      type: Format
-                      fmt: "-backend-config=key=fleet/%s-bootstrap/terraform.tfstate"
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.region
-                toFieldPath: spec.forProvider.initArgs[2]
-                transforms:
-                  - type: string
-                    string:
-                      type: Format
-                      fmt: "-backend-config=region=%s"
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            {{- $xr := .observed.composite.resource }}
+            {{- $spec := $xr.spec }}
+            {{- $name := $xr.metadata.name }}
+            {{- $net := $spec.network | default dict }}
+            {{- $sys := $spec.systemNodes | default dict }}
+            {{- $module := dig "moduleSource" "git::https://github.com/nanohype/landing-zone.git?ref=main" $spec }}
+            {{- /* cluster-stack's fresh tofu outputs (empty until it has applied) */}}
+            {{- $cs := index (.observed.resources | default dict) "cluster-stack" }}
+            {{- $csOut := dict }}
+            {{- if $cs }}{{ $csOut = dig "atProvider" "outputs" dict ($cs.resource.status | default dict) }}{{ end }}
+            {{- $csEndpoint := dig "cluster_endpoint" "" $csOut }}
+            {{- /* the cluster's durable identity is the XR's own persisted status. The bootstrap
+                   gate + its identity vars read from here, not the volatile observed output, so a
+                   transient cluster-stack reconcile can't drop the bootstrap Workspace (and GC its
+                   Cilium/ArgoCD state) or blank its vars. The write-back below keeps it fresh. */}}
+            {{- $st := $xr.status | default dict }}
+            {{- $endpoint := dig "clusterEndpoint" "" $st }}
+            ---
+            # cluster-stack: the network + EKS cluster (AWS only). Always rendered.
+            apiVersion: opentofu.m.upbound.io/v1beta1
+            kind: Workspace
+            metadata:
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: cluster-stack
+                crossplane.io/external-name: {{ $name }}
+            spec:
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: default
+              writeConnectionSecretToRef:
+                name: {{ $name }}-kubeconfig
+              forProvider:
+                source: Remote
+                module: {{ $module | quote }}
+                entrypoint: fleet/aws/cluster-stack
+                enableTofuCLILogging: true
+                remotePullPolicy: IfNotPresent
+                vars:
+                  - {key: region, value: {{ $spec.region | quote }}}
+                  - {key: environment, value: {{ dig "environment" "dev" $spec | quote }}}
+                  - {key: team, value: {{ $spec.team | quote }}}
+                  - {key: cluster_name, value: {{ dig "clusterName" "eks" $spec | quote }}}
+                  - {key: cluster_version, value: {{ dig "clusterVersion" "1.35" $spec | quote }}}
+                  - {key: vpc_cidr, value: {{ dig "vpcCidr" "10.0.0.0/16" $net | quote }}}
+                  - {key: assume_role_arn, value: {{ dig "vendRoleArn" "" $spec | quote }}}
+                  # path-gated under /eks-fleet/ for every hub vend (hub role same-account, fleet-vend cross-account)
+                  - {key: cluster_iam_role_path, value: "/eks-fleet/"}
+                  - {key: cluster_endpoint_public_access, value: {{ dig "endpointPublicAccess" true $spec | quote }}}
+                  - {key: max_azs, value: {{ dig "maxAzs" 3 $net | quote }}}
+                  - {key: nat_gateways, value: {{ dig "natGateways" 1 $net | quote }}}
+                  - {key: system_node_min_size, value: {{ dig "minSize" 2 $sys | quote }}}
+                  - {key: system_node_max_size, value: {{ dig "maxSize" 6 $sys | quote }}}
+                  - {key: system_node_desired_size, value: {{ dig "desiredSize" 2 $sys | quote }}}
+                  - {key: system_node_disk_size, value: {{ dig "diskSize" 100 $sys | quote }}}
+                  # list-typed -> JSON string (tofu parses it as list(string)). Empty allowlist
+                  # = unrestricted (the cluster module's length>0 ? cidrs : ["0.0.0.0/0"]).
+                  - {key: cluster_endpoint_public_access_cidrs, value: {{ dig "endpointPublicAccessCidrs" (list) $spec | toJson | quote }}}
+                  - {key: system_node_instance_types, value: {{ dig "instanceTypes" (list "m7g.xlarge" "m6g.xlarge") $sys | toJson | quote }}}
+                  - {key: bootstrap_access_role_arn, value: {{ dig "bootstrapAccessRoleArn" "" $spec | quote }}}
+                initArgs:
+                  - "-backend-config=bucket=nanohype-eks-fleet-tfstate"
+                  - "-backend-config=key=fleet/{{ $name }}/terraform.tfstate"
+                  - "-backend-config=region={{ $spec.region }}"
+                  - "-backend-config=encrypt=true"
+            {{- if $endpoint }}
+            ---
+            # cluster-bootstrap: agent-iam + Cilium/ArgoCD (k8s/helm). Rendered once the cluster
+            # publishes its endpoint to Cluster.status, so its cluster-identity vars (read from the
+            # durable status) are always populated.
+            apiVersion: opentofu.m.upbound.io/v1beta1
+            kind: Workspace
+            metadata:
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: cluster-bootstrap
+                crossplane.io/external-name: {{ $name }}-bootstrap
+            spec:
+              providerConfigRef:
+                kind: ClusterProviderConfig
+                name: default
+              forProvider:
+                source: Remote
+                module: {{ $module | quote }}
+                entrypoint: fleet/aws/cluster-bootstrap
+                enableTofuCLILogging: true
+                remotePullPolicy: IfNotPresent
+                vars:
+                  - {key: region, value: {{ $spec.region | quote }}}
+                  - {key: environment, value: {{ dig "environment" "dev" $spec | quote }}}
+                  - {key: team, value: {{ $spec.team | quote }}}
+                  - {key: assume_role_arn, value: {{ dig "vendRoleArn" "" $spec | quote }}}
+                  - {key: cluster_name, value: {{ dig "clusterName" "" $st | quote }}}
+                  - {key: cluster_endpoint, value: {{ $endpoint | quote }}}
+                  - {key: cluster_certificate_authority_data, value: {{ dig "certificateAuthorityData" "" $st | quote }}}
+                  - {key: oidc_provider_arn, value: {{ dig "oidcProviderArn" "" $st | quote }}}
+                  - {key: oidc_issuer, value: {{ dig "oidcIssuer" "" $st | quote }}}
+                  - {key: vpc_id, value: {{ dig "vpcId" "" $st | quote }}}
+                  - {key: enable_agent_platform, value: {{ dig "enableAgentPlatform" true $spec | quote }}}
+                  - {key: tenants_repo_url, value: {{ dig "tenantsRepoUrl" "" $spec | quote }}}
+                initArgs:
+                  - "-backend-config=bucket=nanohype-eks-fleet-tfstate"
+                  - "-backend-config=key=fleet/{{ $name }}-bootstrap/terraform.tfstate"
+                  - "-backend-config=region={{ $spec.region }}"
+                  - "-backend-config=encrypt=true"
+            {{- end }}
+            {{- if $csEndpoint }}
+            ---
+            # status write-back: cluster-stack's fresh tofu outputs -> Cluster.status (the XR sans
+            # the composition-resource-name annotation updates status only). Gated on the fresh
+            # output being present, so a transient blank reconcile never clobbers a good status.
+            apiVersion: fleet.nanohype.dev/v1alpha1
+            kind: Cluster
+            status:
+              clusterName: {{ dig "cluster_name" "" $csOut | quote }}
+              clusterEndpoint: {{ $csEndpoint | quote }}
+              certificateAuthorityData: {{ dig "cluster_certificate_authority_data" "" $csOut | quote }}
+              clusterSecurityGroupId: {{ dig "cluster_security_group_id" "" $csOut | quote }}
+              oidcProviderArn: {{ dig "oidc_provider_arn" "" $csOut | quote }}
+              oidcIssuer: {{ dig "oidc_issuer" "" $csOut | quote }}
+              karpenterIamRoleArn: {{ dig "karpenter_iam_role_arn" "" $csOut | quote }}
+              vpcId: {{ dig "vpc_id" "" $csOut | quote }}
+            {{- end }}
+    - step: ready
+      functionRef:
+        name: function-auto-ready

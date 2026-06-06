@@ -1,0 +1,37 @@
+# Vend a restricted, cross-account cluster: a public API locked to an office CIDR
+# allowlist (the stronger-than-private-only control when you still need public
+# reach), multi-type Graviton system nodes, and the cross-account access wiring.
+# Exercises the list-typed vars (endpointPublicAccessCidrs, systemNodes.instanceTypes)
+# that ride function-go-templating's toJson, plus the bootstrap cross-account path.
+# Also the second CI render target.
+apiVersion: fleet.nanohype.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: prod-eks
+  namespace: platform
+spec:
+  account: "222222222222"
+  region: us-west-2
+  environment: production
+  team: platform
+  clusterVersion: "1.35"
+  # cross-account: assume the workload account's fleet-vend role to provision,
+  # and grant the hub's Crossplane role a cluster-admin access entry so the
+  # bootstrap Workspace's ambient get-token can reach the spoke API.
+  vendRoleArn: "arn:aws:iam::222222222222:role/production-eks-fleet-vend"
+  bootstrapAccessRoleArn: "arn:aws:iam::111111111111:role/eks-fleet-crossplane"
+  tenantsRepoUrl: "git@github.com:nanohype/tenants.git"
+  endpointPublicAccess: true
+  endpointPublicAccessCidrs:
+    - "203.0.113.0/24"
+    - "198.51.100.7/32"
+  systemNodes:
+    instanceTypes: ["m7g.xlarge", "m6g.xlarge"]
+    minSize: 3
+    maxSize: 9
+    desiredSize: 3
+    diskSize: 120
+  network:
+    vpcCidr: "10.4.0.0/16"
+    maxAzs: 3
+    natGateways: 3

@@ -36,7 +36,7 @@ helm install crossplane crossplane-stable/crossplane -n crossplane-system --crea
 
 ```bash
 kubectl apply -f providers.yaml          # provider-opentofu + runtime config
-kubectl apply -f ../functions.yaml       # function-patch-and-transform
+kubectl apply -f ../functions.yaml       # function-go-templating + function-auto-ready
 ```
 
 ## 5. The hub ClusterProviderConfig (single, source None)

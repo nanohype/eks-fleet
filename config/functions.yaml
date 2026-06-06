@@ -1,10 +1,22 @@
-# The composition pipeline function. Installed on the management cluster and
-# passed to `crossplane render` for offline validation.
+# Composition pipeline functions. Installed on the management cluster and passed
+# to `crossplane render` for offline validation. The Cluster composition renders
+# its Workspaces with function-go-templating (so list-typed vars JSON-encode and
+# the bootstrap Workspace gates on the cluster being Ready), then function-auto-ready
+# marks the XR ready once both Workspaces converge.
 apiVersion: pkg.crossplane.io/v1
 kind: Function
 metadata:
-  name: function-patch-and-transform
+  name: function-go-templating
   annotations:
-    render.crossplane.io/runtime-development-container-image: xpkg.upbound.io/crossplane-contrib/function-patch-and-transform:v0.10.6
+    render.crossplane.io/runtime-development-container-image: xpkg.upbound.io/crossplane-contrib/function-go-templating:v0.12.1
 spec:
-  package: xpkg.upbound.io/crossplane-contrib/function-patch-and-transform:v0.10.6
+  package: xpkg.upbound.io/crossplane-contrib/function-go-templating:v0.12.1
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-auto-ready
+  annotations:
+    render.crossplane.io/runtime-development-container-image: xpkg.upbound.io/crossplane-contrib/function-auto-ready:v0.6.5
+spec:
+  package: xpkg.upbound.io/crossplane-contrib/function-auto-ready:v0.6.5
