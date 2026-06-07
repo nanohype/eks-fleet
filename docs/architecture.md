@@ -237,6 +237,14 @@ public repo. `spec.enableAgentPlatform` toggles whether that label is written (f
 installs the operator out of band, e.g. the e2e harness); either way the cluster is still
 bootstrapped (Cilium + ArgoCD + the catalog).
 
+On teardown the order has to reverse: cluster-bootstrap's `tofu destroy` needs the spoke
+API that cluster-stack provides, so the composition renders a `Usage`
+(`protection.crossplane.io`, of: cluster-stack, by: cluster-bootstrap) that blocks
+cluster-stack's deletion until the bootstrap Workspace is gone. `replayDeletion` re-issues
+the held cluster-stack delete the moment the bootstrap clears, so the cascade doesn't wait
+on the garbage-collector backoff. (Both Workspaces carry explicit names so the Usage can
+reference them; the Usage is marked ready in-template so it doesn't gate the XR.)
+
 **Topology — spoke-local ArgoCD (decided).** Each vended cluster runs its own ArgoCD,
 reconciling the shared eks-gitops catalog onto itself — the bootstrap Secret is the
 `in-cluster` entry (`https://kubernetes.default.svc`), pointing ArgoCD at the spoke it

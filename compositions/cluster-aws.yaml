@@ -57,6 +57,9 @@ spec:
             apiVersion: opentofu.m.upbound.io/v1beta1
             kind: Workspace
             metadata:
+              # explicit name (not generateName) so the teardown-ordering Usage below can
+              # reference it; the external-name annotation still carries the tofu identity.
+              name: {{ $name }}-stack
               annotations:
                 gotemplating.fn.crossplane.io/composition-resource-name: cluster-stack
                 crossplane.io/external-name: {{ $name }}
@@ -107,6 +110,7 @@ spec:
             apiVersion: opentofu.m.upbound.io/v1beta1
             kind: Workspace
             metadata:
+              name: {{ $name }}-bootstrap
               annotations:
                 gotemplating.fn.crossplane.io/composition-resource-name: cluster-bootstrap
                 crossplane.io/external-name: {{ $name }}-bootstrap
@@ -138,6 +142,34 @@ spec:
                   - "-backend-config=key=fleet/{{ $name }}-bootstrap/terraform.tfstate"
                   - "-backend-config=region={{ $spec.region }}"
                   - "-backend-config=encrypt=true"
+            ---
+            # teardown ordering: cluster-bootstrap's `tofu destroy` needs the spoke API that
+            # cluster-stack provides, so block cluster-stack's deletion until the bootstrap
+            # Workspace is gone. replayDeletion re-issues the blocked cluster-stack delete the
+            # moment the bootstrap clears, so the cascade doesn't wait on the GC backoff.
+            apiVersion: protection.crossplane.io/v1beta1
+            kind: Usage
+            metadata:
+              name: {{ $name }}-bootstrap-uses-stack
+              annotations:
+                gotemplating.fn.crossplane.io/composition-resource-name: cluster-bootstrap-usage
+                # an ordering construct, not a workload — its existence is its readiness, so
+                # mark it ready in-template rather than let auto-ready wait on a Ready condition
+                # the Usage never reports (which would wedge the XR's own readiness).
+                gotemplating.fn.crossplane.io/ready: "True"
+            spec:
+              replayDeletion: true
+              reason: cluster-bootstrap tofu destroy needs the cluster-stack API endpoint
+              of:
+                apiVersion: opentofu.m.upbound.io/v1beta1
+                kind: Workspace
+                resourceRef:
+                  name: {{ $name }}-stack
+              by:
+                apiVersion: opentofu.m.upbound.io/v1beta1
+                kind: Workspace
+                resourceRef:
+                  name: {{ $name }}-bootstrap
             {{- end }}
             {{- if $csEndpoint }}
             ---
