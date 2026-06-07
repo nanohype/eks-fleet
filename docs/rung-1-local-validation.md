@@ -107,26 +107,34 @@ kubectl apply -f rung1-cluster.yaml
 
 ```bash
 kubectl get cluster fleet-smoke -n platform -o wide               # the namespaced Cluster
-kubectl get workspace                                             # the provider-opentofu MR
+kubectl get workspace                                             # the provider-opentofu MRs (two)
 kubectl describe workspace                                        # tofu plan/apply progress
 kubectl get cluster fleet-smoke -n platform -o jsonpath='{.status}' | jq   # endpoint/OIDC fill in
 ```
 
-The Workspace runs `tofu init` (fetching the public `landing-zone` repo, running in the
-`fleet/aws/cluster-stack` subdir) → `apply` → ~20-40 min for the EKS build.
+The composition renders **two** Workspaces. First `cluster-stack` runs `tofu init`
+(fetching the public `landing-zone` repo, running in the `fleet/aws/cluster-stack`
+subdir) → `apply` → ~20-40 min for the EKS build. Once it publishes the cluster
+endpoint to `Cluster.status`, the `function-go-templating` step renders the second
+`cluster-bootstrap` Workspace (`fleet/aws/cluster-bootstrap`), which installs Cilium +
+ArgoCD + the eks-agent-platform operator onto the new cluster; `function-auto-ready`
+marks the `Cluster` Ready once both converge.
 
 ## 8. Validate
 
 - `kubectl get cluster fleet-smoke -n platform` shows the status populated
   (`clusterEndpoint`, `oidcProviderArn`, `oidcIssuer`, `vpcId`).
 - `aws eks describe-cluster --name dev-eks --region us-west-2` → ACTIVE.
+- The `cluster-bootstrap` Workspace converged: `kubectl --kubeconfig <vended> get pods -n kube-system | grep cilium` and `-n argocd` show the addons (and the operator) installed by the second Workspace.
 - (optional) point `cloudgov` at it.
 
 ## 9. Teardown + verify zero-billable
 
 ```bash
 kubectl delete cluster fleet-smoke -n platform   # provider-opentofu runs tofu destroy
-kubectl get workspace -w                # wait until gone
+# A teardown Usage orders it: cluster-bootstrap destroys before cluster-stack, so
+# the addons come off the cluster before the cluster itself is torn down.
+kubectl get workspace -w                # wait until BOTH workspaces are gone
 # confirm:
 aws eks list-clusters --region us-west-2          # []
 aws ec2 describe-vpcs --filter Name=tag:Project,Values=landing-zone Name=tag:Environment,Values=dev Name=isDefault,Values=false
