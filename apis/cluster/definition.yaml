@@ -62,7 +62,7 @@ spec:
                   description: Cluster base name; the module prefixes it with environment.
                 clusterVersion:
                   type: string
-                  default: "1.35"
+                  default: "1.36"
                   description: Kubernetes version.
                 endpointPublicAccess:
                   type: boolean
