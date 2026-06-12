@@ -16,6 +16,14 @@ is free (local kind). **Time:** ~45 min, most of it the EKS build.
   authenticates with temp creds from this session, so **finish within its lifetime**.
 - Bedrock/region access in us-west-2 (same as the e2e).
 
+> **Two repos, one cluster.** You drive this from two working copies. **`kx`** owns
+> the kind hub's lifecycle (`task up` / `task down`). **`eks-fleet` owns the control
+> plane** — every `kubectl apply` below (`config/…`, `apis/…`, `compositions/…`) is an
+> **eks-fleet** path, applied *onto* the kind cluster. **Run all numbered steps from the
+> `eks-fleet` repo root**; the kx commands use a subshell `(cd ../kx && …)` so your shell
+> never leaves eks-fleet. kx has **no `config/` dir** — if `kubectl apply -f config/local/...`
+> reports "no such file or directory," you're sitting in the wrong repo.
+
 ## 0. One-time: the fleet state backend
 
 provider-opentofu persists state in S3 (not the pod). Create the fleet bucket
@@ -31,7 +39,7 @@ aws s3api put-bucket-versioning --bucket nanohype-eks-fleet-tfstate \
 ## 1. Bring up the hub (kx)
 
 ```bash
-cd ../kx && task up      # local kind cluster
+(cd ../kx && task up)    # kx owns the kind hub; the subshell keeps your shell in eks-fleet
 kubectl config use-context kind-kx
 ```
 
@@ -57,6 +65,10 @@ kubectl create secret generic aws-creds -n crossplane-system \
 ```
 
 ## 4. Install provider-opentofu + the function + the ClusterProviderConfig
+
+From the **eks-fleet repo root**. `config/local/` is the kind-hub flavor (mounts the
+`aws-creds` Secret); the production hub uses `config/providers/` + `config/bootstrap/`
+with IRSA instead.
 
 ```bash
 kubectl apply -f config/local/providers.yaml        # provider-opentofu; mounts aws-creds, 60m timeout, 1m poll
@@ -125,7 +137,14 @@ marks the `Cluster` Ready once both converge.
 - `kubectl get cluster fleet-smoke -n platform` shows the status populated
   (`clusterEndpoint`, `oidcProviderArn`, `oidcIssuer`, `vpcId`).
 - `aws eks describe-cluster --name dev-eks --region us-west-2` → ACTIVE.
-- The `cluster-bootstrap` Workspace converged: `kubectl --kubeconfig <vended> get pods -n kube-system | grep cilium` and `-n argocd` show the addons (and the operator) installed by the second Workspace.
+- Get a kubeconfig for the vended (spoke) cluster — its API is separate from the kx hub:
+  ```bash
+  aws eks update-kubeconfig --name dev-eks --region us-west-2 \
+    --kubeconfig /tmp/fleet-smoke.kubeconfig
+  ```
+  (Alternatively, pull the `fleet-smoke-kubeconfig` connection Secret the Composition
+  writes to the `platform` namespace.)
+- The `cluster-bootstrap` Workspace converged: `kubectl --kubeconfig /tmp/fleet-smoke.kubeconfig get pods -n kube-system | grep cilium` and `-n argocd` show the addons (and the operator) installed by the second Workspace.
 - (optional) point `cloudgov` at it.
 
 ## 9. Teardown + verify zero-billable
@@ -138,7 +157,7 @@ kubectl get workspace -w                # wait until BOTH workspaces are gone
 # confirm:
 aws eks list-clusters --region us-west-2          # []
 aws ec2 describe-vpcs --filter Name=tag:Project,Values=landing-zone Name=tag:Environment,Values=dev Name=isDefault,Values=false
-cd ../kx && task down                   # tear down the local hub
+(cd ../kx && task down)                 # tear down the local hub (subshell; stay in eks-fleet)
 ```
 
 If the vended cluster orphans anything (it shouldn't — the entrypoint is the same
