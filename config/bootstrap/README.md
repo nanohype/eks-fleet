@@ -1,20 +1,20 @@
-# Management-cluster bootstrap
+# Hub-cluster bootstrap
 
 What turns a plain EKS cluster into the `eks-fleet` hub. In the real flow an
 `eks-gitops` ApplicationSet syncs all of this; the steps below are the manual
 equivalent + the order they must happen in.
 
-## 1. The management cluster
+## 1. The hub cluster
 
-A dedicated EKS cluster in the `management` account, stood up by `landing-zone`
+A dedicated EKS cluster in the `fleet` account, stood up by `landing-zone`
 the same way any other cluster is (it's the one cluster you *do* hand-author,
 because it's the thing that vends the rest). It runs Crossplane v2 +
 provider-opentofu + ArgoCD.
 
 ## 2. The hub identity (IRSA + state backend) — in `landing-zone`
 
-Provision in the management account:
-- An IAM OIDC provider for the management cluster.
+Provision in the fleet account:
+- An IAM OIDC provider for the hub cluster.
 - Role `eks-fleet-crossplane`, trusting `system:serviceaccount:crossplane-system:provider-opentofu`,
   allowed to (a) read/write the fleet tfstate bucket, and (b)
   `sts:AssumeRole` into each workload account's vend role.
@@ -61,5 +61,5 @@ kubectl apply -f ../../apis/cluster/definition.yaml
 kubectl apply -f ../../compositions/cluster-aws.yaml
 ```
 
-Now a namespaced `Cluster` applied to the management cluster vends a workload
+Now a namespaced `Cluster` applied to the hub cluster vends a workload
 cluster.

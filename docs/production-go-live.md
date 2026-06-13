@@ -12,11 +12,11 @@ keep, tenants on top.
 
 ## Accounts & tooling
 
-- **Management account** `111111111111` (profile `fleet-admin`) — runs the hub.
+- **Fleet account** (profile `fleet`) — runs the hub (the standing control plane; a dedicated account, the `live/aws/fleet` tree). Command-level stand-up: [`stand-up-the-hub.md`](stand-up-the-hub.md).
 - **Workload account** `222222222222` (profile `xx`) — receives vended clusters.
 - Region `us-west-2`, ARM/Graviton default.
 - CLIs: `aws` v2, `kubectl`, `helm`, `tofu` ≥ 1.10.0, `terragrunt`, `crossplane`, `cloudgov`, `jq`.
-- Live SSO before each stage: `aws sts get-caller-identity --profile fleet-admin` (and `--profile xx` for cross-account steps). Hand SSO creds in via `! aws sso login --profile <p>`.
+- Live SSO before each stage: `aws sts get-caller-identity --profile fleet` (and `--profile xx` for cross-account steps). Hand SSO creds in via `! aws sso login --profile <p>`.
 
 ## Status before you start
 
@@ -28,23 +28,18 @@ What the vend chain handles for you, and what you still set by hand:
 
 ---
 
-## Stage 1 — Stand up the management hub
+## Stage 1 — Stand up the hub
 
-Goal: a standing management EKS cluster running Crossplane v2 + provider-opentofu, with the hub IRSA role + S3 state bucket, able to vend.
+Goal: a standing hub EKS cluster in the dedicated `fleet` account running Crossplane v2 + provider-opentofu + ArgoCD, with the hub IRSA role + the fleet state bucket, able to vend.
 
-1. **Provision the management cluster** (hand-authored — the one cluster the fleet doesn't vend). Via the landing-zone env tree for the `management` account: network + cluster + cluster-bootstrap (Cilium + ArgoCD). **Set `enable_eks_interface_endpoint = false`** — the EKS interface endpoint's private DNS shadows the IRSA OIDC issuer and breaks `data.tls_certificate` when the hub later creates vended clusters' OIDC providers.
-2. **Provision `fleet-hub`** (`landing-zone/components/aws/fleet-hub`, profile `fleet-admin`) with the management cluster's `oidc_provider_arn` + `oidc_issuer` (issuer **without** the `https://` scheme). Outputs: `hub_role_arn` (`eks-fleet-crossplane`) + the `nanohype-eks-fleet-tfstate` bucket. If the bucket already exists from a prior run, import it or delete it (if it holds only test state) before applying.
-3. **Provision `fleet-vend`** in the workload account (`landing-zone/components/aws/fleet-vend`, profile `xx`, `-var hub_role_arn=arn:aws:iam::111111111111:role/eks-fleet-crossplane`). Outputs the `dev-eks-fleet-vend` role (trusts the hub role) + publishes its ARN to SSM `/eks-fleet/dev/fleet-vend/vend_role_arn`.
-4. **Point kubectl at the hub:** `aws eks update-kubeconfig --name <mgmt-cluster> --region us-west-2 --profile fleet-admin`.
-5. **Install Crossplane v2:** `helm install crossplane crossplane-stable/crossplane -n crossplane-system --create-namespace --version 2.3.1`.
-6. **Install provider-opentofu + runtime config:** edit `eks-fleet/config/bootstrap/` to set the IRSA ServiceAccount annotation to `hub_role_arn`, then `kubectl apply` it. The runtime config carries `--timeout=60m` (EKS builds run 20–40m) and `--poll=1m`.
-7. **Install the function + ProviderConfig:** `kubectl apply -f eks-fleet/config/functions.yaml` and the single `default` `ClusterProviderConfig` (`source: None` → ambient IRSA).
-8. **Install the Cluster API:** `kubectl apply -f eks-fleet/apis/cluster/definition.yaml` and `compositions/cluster-aws.yaml`.
+**Command-level walkthrough: [`stand-up-the-hub.md`](stand-up-the-hub.md).** It provisions the hub cluster from the landing-zone `live/aws/fleet/us-west-2/hub/` tree (network → cluster → cluster-bootstrap → fleet-hub; the network component carries `enable_eks_interface_endpoint=false`, the OIDC-DNS shadow fix), then installs Crossplane + provider-opentofu (IRSA flavor) + the Cluster API, and smoke-vends one cluster same-account.
 
-**Validate:**
+For **cross-account** vending into a workload spoke, also provision `fleet-vend` in that account (`landing-zone/components/aws/fleet-vend`, profile `xx`, `-var hub_role_arn=<the eks-fleet-crossplane ARN>`) — it outputs the `dev-eks-fleet-vend` role (trusts the hub role) + publishes its ARN to SSM `/eks-fleet/dev/fleet-vend/vend_role_arn` — and set `spec.vendRoleArn` (Stage 2).
+
+**Validate** (gates from stand-up-the-hub.md §2 + §4):
+- `aws eks describe-cluster --name hub-eks --region us-west-2 --profile fleet` → `ACTIVE`.
 - `kubectl get provider.pkg.crossplane.io provider-opentofu -o wide` → `Healthy=True`.
-- `aws iam get-role --role-name eks-fleet-crossplane --profile fleet-admin` and `aws iam get-role --role-name dev-eks-fleet-vend --profile xx` both resolve.
-- `aws s3 ls s3://nanohype-eks-fleet-tfstate/ --profile fleet-admin` → versioned bucket.
+- `aws s3 ls s3://nanohype-eks-fleet-tfstate/ --profile fleet` → versioned bucket.
 - `kubectl get xrd clusters.fleet.nanohype.dev` and `kubectl get composition cluster-aws` present.
 
 ---
@@ -100,6 +95,6 @@ Goal: the four tenant apps live on the cluster — `competitive-intelligence`, `
 
 ## Teardown
 
-Reverse order. Delete tenant ApplicationSets → delete the `Cluster` CR → destroy `fleet-vend` / `fleet-hub` / the state bucket / the management cluster. Then `cloudgov orphans --profile <p>` in each account and reap any residue (EKS log groups, Karpenter SQS/EventBridge) — `tofu destroy` doesn't catch those. Confirm zero EKS/NAT/VPC/EC2/EBS/ELB/EIP before walking away.
+Reverse order. Delete tenant ApplicationSets → delete the `Cluster` CR → destroy `fleet-vend` / `fleet-hub` / the state bucket / the hub cluster. Then `cloudgov orphans --profile <p>` in each account and reap any residue (EKS log groups, Karpenter SQS/EventBridge) — `tofu destroy` doesn't catch those. Confirm zero EKS/NAT/VPC/EC2/EBS/ELB/EIP before walking away.
 
 Deleting the `Cluster` cascades both Workspaces' `tofu destroy`. The composition's `Usage` (of: cluster-stack, by: cluster-bootstrap) enforces the order: cluster-stack's teardown is blocked until cluster-bootstrap is gone, so the bootstrap destroys against a live API endpoint (its `tofu destroy` needs the spoke API) before cluster-stack tears the cluster down. `replayDeletion` re-issues the blocked cluster-stack delete the moment the bootstrap clears, so you don't wait on the GC backoff.

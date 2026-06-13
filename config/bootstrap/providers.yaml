@@ -1,6 +1,6 @@
-# provider-opentofu + its runtime tuning. Apply to the management cluster after
+# provider-opentofu + its runtime tuning. Apply to the hub cluster after
 # Crossplane v2 itself is installed (see README.md). In the real flow an eks-gitops
-# ApplicationSet syncs these onto the management cluster.
+# ApplicationSet syncs these onto the hub cluster.
 apiVersion: pkg.crossplane.io/v1
 kind: Provider
 metadata:
@@ -11,7 +11,7 @@ spec:
     name: provider-opentofu
 ---
 # The runtime config carries three things that matter for EKS:
-#   1. The IRSA ServiceAccount — the hub's identity, annotated with the management
+#   1. The IRSA ServiceAccount — the hub's identity, annotated with the fleet
 #      account role it assumes (and chains from, into each workload account). The
 #      eks-fleet-crossplane role's trust policy names this SA subject
 #      (system:serviceaccount:crossplane-system:provider-opentofu).
@@ -28,8 +28,8 @@ spec:
     metadata:
       name: provider-opentofu
       annotations:
-        # set by the bootstrap to the management-account Crossplane role
-        eks.amazonaws.com/role-arn: arn:aws:iam::<MGMT_ACCOUNT_ID>:role/eks-fleet-crossplane
+        # set by the bootstrap to the fleet-account Crossplane role
+        eks.amazonaws.com/role-arn: arn:aws:iam::<FLEET_ACCOUNT_ID>:role/eks-fleet-crossplane
   deploymentTemplate:
     spec:
       selector: {}
