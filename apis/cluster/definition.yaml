@@ -55,6 +55,14 @@ spec:
                     ambient get-token can reach this cluster's API (get-token can't
                     present the fleet-vend external_id). Empty = same-account, where
                     the creator (the hub) is already admin.
+                portalAccessRoleArn:
+                  type: string
+                  default: ""
+                  description: >-
+                    The portal worker's per-account spoke role ARN — granted a read
+                    EKS access entry so portal reaches this cluster's API (mint
+                    tokens, watch tenants) with the same role it uses for
+                    eks:DescribeCluster. Empty = portal not wired for this cluster.
                 # --- cluster (landing-zone components/aws/cluster) ------------
                 clusterName:
                   type: string
