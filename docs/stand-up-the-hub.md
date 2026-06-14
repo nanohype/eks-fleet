@@ -28,6 +28,10 @@ on plain IAM trust (`fleet-hub` → `fleet-vend`). Its landing-zone env tree is
 - A live SSO session: `aws sso login --profile fleet`. Export `AWS_PROFILE=fleet`
   so terragrunt picks it up.
 
+> **Two repos, one session.** Steps 1–2 run from the **landing-zone** repo root,
+> step 4 from the **eks-fleet** repo root; step 3 and the smoke vend (step 5) are
+> `kubectl`, run from anywhere. Keep the same `AWS_PROFILE=fleet` shell throughout.
+
 ## 1. Point the fleet account id + state backend
 
 ```bash
@@ -60,9 +64,11 @@ task apply CLOUD=aws ACCOUNT=fleet REGION=us-west-2 ENVIRONMENT=hub COMPONENT=fl
 - `fleet-hub` mints the `eks-fleet-crossplane` IRSA role + the
   `nanohype-eks-fleet-tfstate` bucket (the vended clusters' state backend).
 
-> If `nanohype-eks-fleet-tfstate` already exists from a prior run, import it into
-> the fleet-hub state or delete it (if it only holds test state) before applying
-> fleet-hub — fleet-hub creates it as a resource.
+> If fleet-hub fails with `BucketAlreadyOwnedByYou` on `nanohype-eks-fleet-tfstate`
+> (the bucket exists from a prior run but isn't in state yet), adopt it and re-apply:
+> `cd live/aws/fleet/us-west-2/hub/fleet-hub && terragrunt import aws_s3_bucket.fleet_state nanohype-eks-fleet-tfstate`,
+> then re-run the fleet-hub apply. (Or `aws s3 rb s3://nanohype-eks-fleet-tfstate --force`
+> if it's empty and you'd rather start clean.)
 
 **Validate:**
 - `aws eks describe-cluster --name hub-eks --region us-west-2` → `ACTIVE`.
@@ -89,9 +95,11 @@ helm repo add crossplane-stable https://charts.crossplane.io/stable
 helm install crossplane crossplane-stable/crossplane -n crossplane-system --create-namespace --version 2.3.1
 kubectl -n crossplane-system rollout status deploy/crossplane --timeout=180s
 
-# provider-opentofu — first set the SA annotation to the hub role ARN from step 2:
-#   config/bootstrap/providers.yaml -> eks.amazonaws.com/role-arn: <hub_role_arn>
-kubectl apply -f config/bootstrap/providers.yaml          # provider + runtime config (60m timeout, 1m poll)
+# provider-opentofu — inject the hub role ARN onto the SA annotation at apply time
+# (the file stays a placeholder; '#' sed delimiter because the ARN is full of slashes):
+HUB_ROLE_ARN=$(cd ../landing-zone/live/aws/fleet/us-west-2/hub/fleet-hub && terragrunt output -raw hub_role_arn)
+sed "s#eks.amazonaws.com/role-arn: .*#eks.amazonaws.com/role-arn: ${HUB_ROLE_ARN}#" \
+  config/bootstrap/providers.yaml | kubectl apply -f -    # provider + runtime config (60m timeout, 1m poll)
 kubectl apply -f config/functions.yaml                    # function-go-templating + function-auto-ready
 kubectl -n crossplane-system wait --for=condition=Healthy provider/provider-opentofu --timeout=300s
 kubectl apply -f config/providers/providerconfig.yaml     # the single ClusterProviderConfig (source None -> ambient IRSA)
