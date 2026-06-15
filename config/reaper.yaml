@@ -1,0 +1,97 @@
+# Hub-side reaper for ephemeral spokes. Deletes Cluster CRs whose ttlDays has
+# elapsed since creation — Crossplane then runs the composition's ordered
+# tofu destroy, so the spoke is torn down cleanly and leaves no orphans. Only
+# clusters with spec.ttlDays > 0 are candidates; persistent clusters (ttlDays
+# unset/0) are never touched. Apply to the hub alongside the other config/ pieces.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fleet-reaper
+  namespace: crossplane-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fleet-reaper
+rules:
+  # List every team's Cluster CRs and delete the expired ones. Scoped to the
+  # Cluster API only — nothing else.
+  - apiGroups: ["fleet.nanohype.dev"]
+    resources: ["clusters"]
+    verbs: ["get", "list", "watch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fleet-reaper
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: fleet-reaper
+subjects:
+  - kind: ServiceAccount
+    name: fleet-reaper
+    namespace: crossplane-system
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: fleet-reaper
+  namespace: crossplane-system
+spec:
+  schedule: "0 * * * *" # hourly; ttl is day-granular so this is ample
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 300
+      template:
+        spec:
+          serviceAccountName: fleet-reaper
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: reaper
+              # kubectl + jq + sh. jq does the RFC3339 date math (fromdateiso8601),
+              # so there's no GNU-vs-busybox `date -d` dependency. Pinned.
+              image: alpine/k8s:1.31.1
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 25m
+                  memory: 64Mi
+                limits:
+                  cpu: 100m
+                  memory: 128Mi
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  now=$(date +%s)
+                  expired=$(kubectl get clusters.fleet.nanohype.dev -A -o json | jq -r --argjson now "$now" '
+                    .items[]
+                    | select((.spec.ttlDays // 0) > 0)
+                    | select((.metadata.creationTimestamp | fromdateiso8601) + (.spec.ttlDays * 86400) < $now)
+                    | "\(.metadata.namespace)/\(.metadata.name)"')
+                  if [ -z "$expired" ]; then
+                    echo "no expired ephemeral clusters"
+                    exit 0
+                  fi
+                  echo "$expired" | while IFS=/ read -r ns name; do
+                    [ -n "$name" ] || continue
+                    echo "reaping expired cluster $ns/$name"
+                    kubectl delete clusters.fleet.nanohype.dev -n "$ns" "$name" --wait=false
+                  done

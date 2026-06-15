@@ -98,6 +98,7 @@ spec:
                   - {key: system_node_instance_types, value: {{ dig "instanceTypes" (list "m7g.xlarge" "m6g.xlarge") $sys | toJson | quote }}}
                   - {key: bootstrap_access_role_arn, value: {{ dig "bootstrapAccessRoleArn" "" $spec | quote }}}
                   - {key: portal_access_role_arn, value: {{ dig "portalAccessRoleArn" "" $spec | quote }}}
+                  - {key: ttl_days, value: {{ dig "ttlDays" 0 $spec | quote }}}
                 initArgs:
                   - "-backend-config=bucket=nanohype-eks-fleet-tfstate"
                   - "-backend-config=key=fleet/{{ $name }}/terraform.tfstate"

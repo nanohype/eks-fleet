@@ -63,3 +63,15 @@ kubectl apply -f ../../compositions/cluster-aws.yaml
 
 Now a namespaced `Cluster` applied to the hub cluster vends a workload
 cluster.
+
+## 7. The ephemeral-spoke reaper
+
+```bash
+kubectl apply -f ../reaper.yaml
+```
+
+An hourly CronJob (in `crossplane-system`) that deletes `Cluster` CRs whose
+`spec.ttlDays` has elapsed since creation — only `ttlDays > 0` clusters are
+candidates, persistent clusters are never touched. Deleting the CR triggers the
+composition's ordered `tofu destroy`, so ephemeral vends tear down cleanly on
+schedule and leave no orphans behind.

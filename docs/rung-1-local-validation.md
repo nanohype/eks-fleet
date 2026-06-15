@@ -83,6 +83,7 @@ kubectl apply -f config/local/providerconfig.yaml   # ClusterProviderConfig (sou
 kubectl create namespace platform
 kubectl apply -f apis/cluster/definition.yaml
 kubectl apply -f compositions/cluster-aws.yaml
+kubectl apply -f config/reaper.yaml          # hourly reaper: deletes Cluster CRs past their ttlDays
 ```
 
 > The Workspace fetches `landing-zone` at `?ref=main` and runs `tofu` in the
@@ -109,6 +110,9 @@ spec:
   environment: dev
   team: platform
   # vendRoleArn omitted -> same-account, uses the hub's creds
+  # ttlDays: 1   # tags the spoke Lifecycle=ephemeral + Expiry; the reaper would
+  #             # delete this Cluster a day after creation. rung-1 tears it down
+  #             # by hand first (step 8), so it's left off here.
 ```
 
 ```bash

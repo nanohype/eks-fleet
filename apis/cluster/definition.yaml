@@ -63,6 +63,16 @@ spec:
                     EKS access entry so portal reaches this cluster's API (mint
                     tokens, watch tenants) with the same role it uses for
                     eks:DescribeCluster. Empty = portal not wired for this cluster.
+                ttlDays:
+                  type: integer
+                  default: 0
+                  minimum: 0
+                  description: >-
+                    Days-to-live for an ephemeral spoke. 0 (default) = persistent:
+                    tagged Lifecycle=persistent and never auto-reaped. >0 tags the
+                    spoke Lifecycle=ephemeral + Expiry=<vend date + ttlDays> and the
+                    hub reaper deletes this Cluster (a clean Crossplane teardown)
+                    ttlDays after creation.
                 # --- cluster (landing-zone components/aws/cluster) ------------
                 clusterName:
                   type: string
