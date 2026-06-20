@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+# Least-privilege default for GITHUB_TOKEN; lint + render only read the repo.
+# The pr-summary job opts into pull-requests: write on top of this.
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: Lint YAML
