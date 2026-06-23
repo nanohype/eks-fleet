@@ -20,6 +20,14 @@ spec:
     spec:
       selector: {}
       template:
+        metadata:
+          # Scraped for metrics the same way as the prod hub — on kx the
+          # kube-prometheus-stack picks up the annotation (prod uses the Grafana
+          # Agent). The provider serves controller-runtime metrics on :8080.
+          annotations:
+            prometheus.io/scrape: "true"
+            prometheus.io/port: "8080"
+            prometheus.io/path: "/metrics"
         spec:
           # kind has no IRSA, so the tofu run gets AWS creds from the pod env:
           # mount the aws-creds Secret (the [default] INI under key `credentials`)
