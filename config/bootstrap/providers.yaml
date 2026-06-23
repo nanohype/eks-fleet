@@ -34,6 +34,15 @@ spec:
     spec:
       selector: {}
       template:
+        metadata:
+          # Scraped by the hub's Grafana Agent → Amazon Managed Prometheus. The
+          # provider serves controller-runtime metrics (reconcile rate/errors/
+          # latency for the Workspace controller — the vend execution signal) on
+          # :8080 by default. Feeds the fleet-vend dashboard in eks-gitops.
+          annotations:
+            prometheus.io/scrape: "true"
+            prometheus.io/port: "8080"
+            prometheus.io/path: "/metrics"
         spec:
           containers:
             - name: package-runtime
