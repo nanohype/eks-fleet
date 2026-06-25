@@ -75,3 +75,14 @@ An hourly CronJob (in `crossplane-system`) that deletes `Cluster` CRs whose
 candidates, persistent clusters are never touched. Deleting the CR triggers the
 composition's ordered `tofu destroy`, so ephemeral vends tear down cleanly on
 schedule and leave no orphans behind.
+
+Because each delete tears down a real EKS cluster, the reaper ships safe:
+
+- **`DRY_RUN=true` (default)** — it logs which clusters it would reap and deletes
+  nothing. Watch a cycle or two (`kubectl logs -n crossplane-system job/...`),
+  confirm only genuinely-expired ephemeral spokes appear, then set `DRY_RUN=false`
+  in `reaper.yaml` to arm it (a reviewable GitOps change).
+- **`MAX_REAP=5`** — the most clusters one run may delete. A clock skew or a
+  mis-set `ttlDays` could flag many live clusters at once; if more than `MAX_REAP`
+  are expired, the job refuses to act and exits non-zero. That surfaces as a
+  failed Job (`kube_job_failed`) for alerting instead of a silent mass-deletion.
