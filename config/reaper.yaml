@@ -3,6 +3,15 @@
 # tofu destroy, so the spoke is torn down cleanly and leaves no orphans. Only
 # clusters with spec.ttlDays > 0 are candidates; persistent clusters (ttlDays
 # unset/0) are never touched. Apply to the hub alongside the other config/ pieces.
+#
+# Deleting a Cluster CR tears down a real EKS cluster, so the reaper ships safe:
+#   - DRY_RUN=true (the default) logs what would be reaped and deletes nothing.
+#     Watch a cycle or two, confirm only genuinely-expired ephemeral spokes are
+#     listed, then set DRY_RUN=false in this manifest to arm it.
+#   - MAX_REAP caps how many clusters one run may delete. A clock skew or a
+#     mis-set ttlDays could expire many live clusters at once; if more than
+#     MAX_REAP are flagged, the job refuses to act and exits non-zero — a loud,
+#     alertable failure (kube_job_failed) instead of a silent mass-deletion.
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -75,6 +84,15 @@ spec:
                 limits:
                   cpu: 100m
                   memory: 128Mi
+              env:
+                # Safe by default: log candidates, delete nothing. Flip to "false"
+                # (a reviewable GitOps change) to arm the reaper.
+                - name: DRY_RUN
+                  value: "true"
+                # Circuit breaker: most one run may delete. Exceeding it fails the
+                # job instead of mass-deleting on a TTL/clock fault.
+                - name: MAX_REAP
+                  value: "5"
               command:
                 - /bin/sh
                 - -c
@@ -90,7 +108,21 @@ spec:
                     echo "no expired ephemeral clusters"
                     exit 0
                   fi
-                  echo "$expired" | while IFS=/ read -r ns name; do
+                  count=$(printf '%s\n' "$expired" | grep -c .)
+                  echo "$count expired ephemeral cluster(s):"
+                  printf '%s\n' "$expired" | sed 's/^/  /'
+                  # A clock skew or mis-set ttlDays could flag many live clusters at
+                  # once. Refuse to act and fail loudly rather than mass-delete.
+                  if [ "$count" -gt "${MAX_REAP:-5}" ]; then
+                    echo "ERROR: $count expired exceeds MAX_REAP=${MAX_REAP:-5} — refusing to reap." >&2
+                    echo "Investigate (clock skew? mis-set ttlDays?) or raise MAX_REAP to proceed." >&2
+                    exit 1
+                  fi
+                  if [ "${DRY_RUN:-true}" = "true" ]; then
+                    echo "DRY-RUN: would reap the $count cluster(s) above. Set DRY_RUN=false to arm."
+                    exit 0
+                  fi
+                  printf '%s\n' "$expired" | while IFS=/ read -r ns name; do
                     [ -n "$name" ] || continue
                     echo "reaping expired cluster $ns/$name"
                     kubectl delete clusters.fleet.nanohype.dev -n "$ns" "$name" --wait=false
