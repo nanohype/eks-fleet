@@ -115,10 +115,11 @@ role (`eks-fleet-crossplane`, trusting
 `sts:AssumeRole`s a `fleet-vend` role (resource `${env}-eks-fleet-vend`, IAM path
 `/eks-fleet/`) in each workload account — provisioned by landing-zone's
 `components/aws/fleet-vend/`, scoped trust + permissions boundary, the same shape as
-the operator's per-tenant IRSA. Targeting is picked by `spec.account` (the
-Composition derives the vend-role ARN, or honors an explicit `spec.vendRoleArn`),
-which feeds the entrypoint's `assume_role` var — not a per-account ProviderConfig.
-The 2nd AWS account enters here, and not before.
+the operator's per-tenant IRSA. Cross-account targeting is explicit: `spec.vendRoleArn`
+is the fleet-vend role ARN, which the Composition templates straight onto the
+entrypoint's `assume_role_arn` var — not a per-account ProviderConfig. `spec.account`
+records the target account (tags/provenance) and is not load-bearing for the
+assume-role. The 2nd AWS account enters here, and not before.
 
 The Workspace's kubeconfig connection secret lands in the `Cluster`'s own namespace:
 under Crossplane v2, namespaced managed resources write connection secrets locally
@@ -146,7 +147,7 @@ alongside the resource.
    the operator's first reconcile. Validate teardown (delete the `Cluster` →
    cluster gone).
 4. **Rung 2 — cross-account.** Add the `fleet-vend` role (landing-zone
-   `components/aws/fleet-vend/`); vend into workload-dev via `spec.account`.
+   `components/aws/fleet-vend/`); vend into workload-dev via `spec.vendRoleArn`.
 5. **Day-2** — once the API is proven, migrate the hot path to **Cluster API /
    CAPA** for upgrade/lifecycle maturity (the `Cluster` resource stays the front door).
 
