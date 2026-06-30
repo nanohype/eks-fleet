@@ -46,6 +46,15 @@ spec:
         spec:
           containers:
             - name: package-runtime
+              # The spoke cluster-bootstrap Workspace installs Cilium + ArgoCD via
+              # the helm provider, which derives its repository cache + config from
+              # HOME. The provider image leaves HOME unset (= /), where the cache
+              # dir is never created and chart resolution fails with "Error locating
+              # chart ... index.yaml: no such file". Point HOME at a writable dir
+              # so helm can fetch + cache repo indexes.
+              env:
+                - name: HOME
+                  value: /tmp
               args:
                 - --debug
                 - --timeout=60m
