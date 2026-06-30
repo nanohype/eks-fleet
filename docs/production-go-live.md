@@ -95,6 +95,8 @@ Goal: the four tenant apps live on the cluster — `competitive-intelligence`, `
 
 ## Teardown
 
+For the step-by-step playbook — reaching the spoke API through an access entry, clearing an `external-create-pending` wedge, hub teardown, and the moduleSource/sizing notes — see [the teardown runbook](runbooks/teardown.md). The substrate-side residue + IAM lessons are in landing-zone [RB-007](https://github.com/nanohype/landing-zone/blob/main/docs/runbooks.md).
+
 Reverse order. Delete tenant ApplicationSets → delete the `Cluster` CR → destroy `fleet-vend` / `fleet-hub` / the state bucket / the hub cluster. Then `cloudgov orphans --profile <p>` in each account and reap any residue (EKS log groups, Karpenter SQS/EventBridge) — `tofu destroy` doesn't catch those. Confirm zero EKS/NAT/VPC/EC2/EBS/ELB/EIP before walking away.
 
 Deleting the `Cluster` cascades both Workspaces' `tofu destroy`. The composition's `Usage` (of: cluster-stack, by: cluster-bootstrap) enforces the order: cluster-stack's teardown is blocked until cluster-bootstrap is gone, so the bootstrap destroys against a live API endpoint (its `tofu destroy` needs the spoke API) before cluster-stack tears the cluster down. `replayDeletion` re-issues the blocked cluster-stack delete the moment the bootstrap clears, so you don't wait on the GC backoff.
