@@ -141,7 +141,13 @@ spec:
                 # --- the substrate the Workspace runs ------------------------
                 moduleSource:
                   type: string
-                  default: "git::https://github.com/nanohype/landing-zone.git?ref=main"
+                  # Pinned to a landing-zone commit, not ?ref=main: provider-opentofu
+                  # caches a module by its ref and never re-pulls on retry, so a moving
+                  # ref makes a vend non-reproducible (and silently stale on a substrate
+                  # bump). Keep in lockstep with the same default in
+                  # compositions/cluster-aws.yaml; bump both to roll the substrate
+                  # forward (the SHA is a landing-zone main commit).
+                  default: "git::https://github.com/nanohype/landing-zone.git?ref=736678ee25160c40aaa875a564fcb525ce658bcb"
                   description: >-
                     Git source for the landing-zone repo the Workspace fetches; tofu runs
                     in the fleet/aws/cluster-stack subdir (set by the composition's
