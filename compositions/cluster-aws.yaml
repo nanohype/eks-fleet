@@ -88,15 +88,17 @@ spec:
                   - {key: assume_role_arn, value: {{ dig "vendRoleArn" "" $spec | quote }}}
                   # path-gated under /eks-fleet/ for every hub vend (hub role same-account, fleet-vend cross-account)
                   - {key: cluster_iam_role_path, value: "/eks-fleet/"}
-                  - {key: cluster_endpoint_public_access, value: {{ dig "endpointPublicAccess" true $spec | quote }}}
+                  - {key: cluster_endpoint_public_access, value: {{ dig "endpointPublicAccess" false $spec | quote }}}
                   - {key: max_azs, value: {{ dig "maxAzs" 3 $net | quote }}}
                   - {key: nat_gateways, value: {{ dig "natGateways" 1 $net | quote }}}
                   - {key: system_node_min_size, value: {{ dig "minSize" 2 $sys | quote }}}
                   - {key: system_node_max_size, value: {{ dig "maxSize" 6 $sys | quote }}}
                   - {key: system_node_desired_size, value: {{ dig "desiredSize" 2 $sys | quote }}}
                   - {key: system_node_disk_size, value: {{ dig "diskSize" 100 $sys | quote }}}
-                  # list-typed -> JSON string (tofu parses it as list(string)). Empty allowlist
-                  # = unrestricted (the cluster module's length>0 ? cidrs : ["0.0.0.0/0"]).
+                  # list-typed -> JSON string (tofu parses it as list(string)). The XRD's CEL
+                  # rule guarantees a public endpoint always carries a non-empty allowlist, so
+                  # the cluster module's empty-list -> ["0.0.0.0/0"] fallback never fires on a
+                  # vended cluster; an empty list only rides along while the endpoint is private.
                   - {key: cluster_endpoint_public_access_cidrs, value: {{ dig "endpointPublicAccessCidrs" (list) $spec | toJson | quote }}}
                   - {key: system_node_instance_types, value: {{ dig "instanceTypes" (list "m7g.xlarge" "m6g.xlarge") $sys | toJson | quote }}}
                   - {key: bootstrap_access_role_arn, value: {{ dig "bootstrapAccessRoleArn" "" $spec | quote }}}

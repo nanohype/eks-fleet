@@ -84,12 +84,20 @@ spec:
                   description: Kubernetes version.
                 endpointPublicAccess:
                   type: boolean
-                  default: true
+                  default: false
+                  description: >-
+                    Expose the EKS API on a public endpoint. Clusters vend private
+                    by default; public access is explicit opt-in and must carry a
+                    non-empty endpointPublicAccessCidrs allowlist (a CEL rule on
+                    spec rejects public-with-empty at admission).
                 endpointPublicAccessCidrs:
                   type: array
                   items: {type: string}
                   default: []
-                  description: CIDRs allowed to reach the public API (empty = unrestricted).
+                  description: >-
+                    CIDRs allowed to reach the public API endpoint. Required
+                    (non-empty) when endpointPublicAccess is true; irrelevant while
+                    the endpoint is private.
                 systemNodes:
                   type: object
                   # Default the whole object (like network): a default on a nested
@@ -156,6 +164,14 @@ spec:
                 - account
                 - region
                 - team
+              x-kubernetes-validations:
+                # Public endpoint access is explicit opt-in and must carry its own
+                # allowlist: an empty CIDR list reaches the cluster module as
+                # ["0.0.0.0/0"], so reject public-with-empty at admission.
+                - rule: >-
+                    !has(self.endpointPublicAccess) || !self.endpointPublicAccess ||
+                    (has(self.endpointPublicAccessCidrs) && self.endpointPublicAccessCidrs.size() > 0)
+                  message: "endpointPublicAccess: true requires a non-empty endpointPublicAccessCidrs allowlist"
             status:
               type: object
               properties:

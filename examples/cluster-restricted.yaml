@@ -1,6 +1,7 @@
-# Vend a restricted, cross-account cluster: a public API locked to an office CIDR
-# allowlist (the stronger-than-private-only control when you still need public
-# reach), multi-type Graviton system nodes, and the cross-account access wiring.
+# Vend a restricted, cross-account cluster. The API endpoint is private by default;
+# this spec explicitly opts into public access, which the XRD only admits with a
+# non-empty CIDR allowlist (here, an office allowlist) — plus multi-type Graviton
+# system nodes and the cross-account access wiring.
 # Exercises the list-typed vars (endpointPublicAccessCidrs, systemNodes.instanceTypes)
 # that ride function-go-templating's toJson, plus the bootstrap cross-account path.
 # Also the second CI render target.
@@ -21,6 +22,8 @@ spec:
   vendRoleArn: "arn:aws:iam::222222222222:role/production-eks-fleet-vend"
   bootstrapAccessRoleArn: "arn:aws:iam::111111111111:role/eks-fleet-crossplane"
   tenantsRepoUrl: "git@github.com:nanohype/tenants.git"
+  # explicit opt-in: a public endpoint must ship its allowlist (the XRD's CEL
+  # rule rejects endpointPublicAccess: true with an empty CIDR list).
   endpointPublicAccess: true
   endpointPublicAccessCidrs:
     - "203.0.113.0/24"

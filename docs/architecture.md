@@ -207,10 +207,11 @@ bool/number from the string value), and the two **list-typed** fields —
 `endpointPublicAccessCidrs` and `systemNodes.instanceTypes` — as JSON via `toJson | quote`.
 provider-opentofu passes vars as `-var=key=value` flags, and tofu parses a `-var` value
 of `["a","b"]` as a real `list(string)`, so the JSON encoding round-trips — which is how
-the security-relevant `endpointPublicAccessCidrs` allowlist reaches the cluster (the
-cluster module treats an empty list as `["0.0.0.0/0"]`, so an empty allowlist =
-unrestricted; a set one restricts the public API). `endpointPublicAccess: false` remains
-the stronger control — a fully private API endpoint. Spec lookups use `dig` so an explicit
+the security-relevant `endpointPublicAccessCidrs` allowlist reaches the cluster. The API
+endpoint is private by default (`endpointPublicAccess: false`); public access is explicit
+opt-in, and a CEL rule on the XRD's spec rejects a public endpoint with an empty allowlist
+— so the cluster module's empty-list → `["0.0.0.0/0"]` fallback never fires on a vended
+cluster. Spec lookups use `dig` so an explicit
 `false` / `0` / empty list is honored, not collapsed to the default. Vars are keyed by name
 (not a position-coupled `vars[]` index), so adding a field is a one-line template edit.
 
