@@ -78,9 +78,16 @@ inputs (which wrap `landing-zone/components/aws/{network,cluster}`) field-for-fi
 | `systemNodes.*` | `system_node_*` | `oidcProviderArn` | `oidc_provider_arn` |
 | `network.vpcCidr` | (network) `vpc_cidr` | `oidcIssuer` | `oidc_issuer` |
 | `vendRoleArn` | `assume_role_arn` | `karpenterIamRoleArn` | `karpenter_iam_role_arn` |
+| `clusterPermissionsBoundaryArn` | `cluster_permissions_boundary_arn` | `vpcId` | `vpc_id` |
+| `operatorPermissionsBoundaryArn` | (bootstrap) `operator_permissions_boundary_arn` | | |
 
 When the cluster module gains a variable, the XRD gains the field and the
-composition templates one more var. No parallel vocabulary.
+composition templates one more var. No parallel vocabulary. The two boundary
+fields carry the fleet role's SSM-published permissions boundary
+(`vend_permissions_boundary_arn` cross-account, `hub_permissions_boundary_arn`
+same-account); they're wiring, not enforcement — the fleet roles' IAM gate only
+accepts role writes carrying the exact boundary, so a weaker value fails the
+vend rather than weakening it.
 
 ## provider-opentofu gotchas (designed-around)
 

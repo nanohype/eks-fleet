@@ -131,6 +131,11 @@ spec:
   region: us-west-2
   environment: dev
   team: platform
+  # the hub role's IAM gate only mints roles carrying its boundary — wire the
+  # SSM-published ARN (/eks-fleet/dev/fleet-hub/hub_permissions_boundary_arn,
+  # also fleet-hub's hub_permissions_boundary_arn output) onto both halves.
+  clusterPermissionsBoundaryArn: "arn:aws:iam::<fleet-account-id>:policy/eks-fleet/eks-fleet-hub-boundary"
+  operatorPermissionsBoundaryArn: "arn:aws:iam::<fleet-account-id>:policy/eks-fleet/eks-fleet-hub-boundary"
 ```
 
 ```bash
@@ -142,7 +147,8 @@ kubectl get workspace                      # the two provider-opentofu Workspace
 It reaches Ready in ~20–40 min. Validate + tear down per `rung-1-local-validation.md`
 §8–9 (same checks — real-EKS hub instead of kind). For **cross-account** vending
 into a workload spoke, provision `components/aws/fleet-vend` in that account and set
-`spec.vendRoleArn` — see `production-go-live.md` Stage 2.
+`spec.vendRoleArn` + the boundary fields (the SSM-published
+`vend_permissions_boundary_arn`) — see `production-go-live.md` Stage 2.
 
 ## Next
 

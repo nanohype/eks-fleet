@@ -46,6 +46,31 @@ spec:
                     Cross-account role the entrypoint's provider assumes to provision
                     into a workload account. Empty = provision with the hub's own
                     credentials (same-account — e.g. the local kind-hub validation).
+                clusterPermissionsBoundaryArn:
+                  type: string
+                  default: ""
+                  description: >-
+                    Permissions-boundary ARN cluster-stack mints the cluster's IAM
+                    roles with — the boundary of whichever fleet role runs the vend,
+                    published to SSM by landing-zone: fleet-vend's
+                    /eks-fleet/<env>/fleet-vend/vend_permissions_boundary_arn for
+                    cross-account (set alongside vendRoleArn), fleet-hub's
+                    /eks-fleet/<env>/fleet-hub/hub_permissions_boundary_arn for a
+                    same-account hub vend. Enforcement lives in IAM, not here: the
+                    fleet roles' CreateRole/AttachRolePolicy gate only allows role
+                    writes carrying their exact boundary, so a weaker or missing
+                    value can't mint a weaker role — the vend just fails. Empty =
+                    ungated (e.g. the local kind hub on user credentials).
+                operatorPermissionsBoundaryArn:
+                  type: string
+                  default: ""
+                  description: >-
+                    Permissions-boundary ARN the bootstrap Workspace mints the
+                    agent-platform operator role with. Same value + SSM source as
+                    clusterPermissionsBoundaryArn (one fleet role runs both
+                    Workspaces, and its IAM gate covers both); a separate field
+                    because it feeds the cluster-bootstrap entrypoint's
+                    operator_permissions_boundary_arn var. Empty = ungated.
                 bootstrapAccessRoleArn:
                   type: string
                   default: ""
@@ -172,6 +197,18 @@ spec:
                     !has(self.endpointPublicAccess) || !self.endpointPublicAccess ||
                     (has(self.endpointPublicAccessCidrs) && self.endpointPublicAccessCidrs.size() > 0)
                   message: "endpointPublicAccess: true requires a non-empty endpointPublicAccessCidrs allowlist"
+                # A cross-account vend runs as the workload account's fleet-vend
+                # role, whose IAM gate rejects any role write that doesn't carry
+                # its permissions boundary — a vend ordered without the boundary
+                # ARNs 403s ~20 minutes into the apply. Reject it at admission.
+                - rule: >-
+                    !has(self.vendRoleArn) || self.vendRoleArn == "" ||
+                    (has(self.clusterPermissionsBoundaryArn) && self.clusterPermissionsBoundaryArn != "" &&
+                    has(self.operatorPermissionsBoundaryArn) && self.operatorPermissionsBoundaryArn != "")
+                  message: >-
+                    vendRoleArn requires clusterPermissionsBoundaryArn +
+                    operatorPermissionsBoundaryArn (the fleet-vend boundary, SSM
+                    /eks-fleet/<env>/fleet-vend/vend_permissions_boundary_arn)
             status:
               type: object
               properties:

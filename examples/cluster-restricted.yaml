@@ -21,6 +21,11 @@ spec:
   # bootstrap Workspace's ambient get-token can reach the spoke API.
   vendRoleArn: "arn:aws:iam::222222222222:role/production-eks-fleet-vend"
   bootstrapAccessRoleArn: "arn:aws:iam::111111111111:role/eks-fleet-crossplane"
+  # the vend role's boundary (SSM /eks-fleet/production/fleet-vend/
+  # vend_permissions_boundary_arn): fleet-vend's IAM gate only mints roles carrying
+  # it, and the XRD rejects a vendRoleArn without both boundary ARNs at admission.
+  clusterPermissionsBoundaryArn: "arn:aws:iam::222222222222:policy/eks-fleet/production-eks-fleet-vend-boundary"
+  operatorPermissionsBoundaryArn: "arn:aws:iam::222222222222:policy/eks-fleet/production-eks-fleet-vend-boundary"
   tenantsRepoUrl: "git@github.com:nanohype/tenants.git"
   # explicit opt-in: a public endpoint must ship its allowlist (the XRD's CEL
   # rule rejects endpointPublicAccess: true with an empty CIDR list).

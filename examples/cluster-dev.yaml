@@ -15,6 +15,11 @@ spec:
   region: us-west-2
   environment: dev
   team: platform
+  # same-account vend: the hub's eks-fleet-crossplane role runs the Workspaces, and
+  # its IAM gate only mints roles carrying the hub boundary — wire the SSM-published
+  # ARN (/eks-fleet/dev/fleet-hub/hub_permissions_boundary_arn) onto both halves.
+  clusterPermissionsBoundaryArn: "arn:aws:iam::111111111111:policy/eks-fleet/eks-fleet-hub-boundary"
+  operatorPermissionsBoundaryArn: "arn:aws:iam::111111111111:policy/eks-fleet/eks-fleet-hub-boundary"
   ttlDays: 7 # auto-reap this dev cluster 7 days after creation (0/omit = persistent)
   clusterVersion: "1.35"
   systemNodes:
