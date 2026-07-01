@@ -45,7 +45,7 @@ spec:
             {{- /* Pinned landing-zone SHA (not ?ref=main): provider-opentofu caches by ref */}}
             {{- /* + never re-pulls, so a moving ref is non-reproducible. Lockstep with the */}}
             {{- /* XRD moduleSource default in apis/cluster/definition.yaml. */}}
-            {{- $module := dig "moduleSource" "git::https://github.com/nanohype/landing-zone.git?ref=736678ee25160c40aaa875a564fcb525ce658bcb" $spec }}
+            {{- $module := dig "moduleSource" "git::https://github.com/nanohype/landing-zone.git?ref=1ae86ccd49d8d2bc803786249a327f66a41cb762" $spec }}
             {{- /* cluster-stack's fresh tofu outputs (empty until it has applied) */}}
             {{- $cs := index (.observed.resources | default dict) "cluster-stack" }}
             {{- $csOut := dict }}
