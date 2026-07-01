@@ -12,7 +12,9 @@
 # pipeline step) marks the XR ready once both Workspaces converge.
 #
 # A single ClusterProviderConfig (source None = the hub's IRSA) serves every account; per-cluster
-# account targeting rides on assume_role_arn (spec.vendRoleArn), per-cluster state on initArgs.
+# account targeting rides on assume_role_arn (spec.vendRoleArn), per-cluster state on initArgs,
+# and the fleet IAM gate's boundary on cluster_/operator_permissions_boundary_arn (the
+# SSM-published fleet boundary, wired via spec.{cluster,operator}PermissionsBoundaryArn).
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
@@ -43,7 +45,7 @@ spec:
             {{- /* Pinned landing-zone SHA (not ?ref=main): provider-opentofu caches by ref */}}
             {{- /* + never re-pulls, so a moving ref is non-reproducible. Lockstep with the */}}
             {{- /* XRD moduleSource default in apis/cluster/definition.yaml. */}}
-            {{- $module := dig "moduleSource" "git::https://github.com/nanohype/landing-zone.git?ref=736678ee25160c40aaa875a564fcb525ce658bcb" $spec }}
+            {{- $module := dig "moduleSource" "git::https://github.com/nanohype/landing-zone.git?ref=1ae86ccd49d8d2bc803786249a327f66a41cb762" $spec }}
             {{- /* cluster-stack's fresh tofu outputs (empty until it has applied) */}}
             {{- $cs := index (.observed.resources | default dict) "cluster-stack" }}
             {{- $csOut := dict }}
@@ -88,15 +90,24 @@ spec:
                   - {key: assume_role_arn, value: {{ dig "vendRoleArn" "" $spec | quote }}}
                   # path-gated under /eks-fleet/ for every hub vend (hub role same-account, fleet-vend cross-account)
                   - {key: cluster_iam_role_path, value: "/eks-fleet/"}
-                  - {key: cluster_endpoint_public_access, value: {{ dig "endpointPublicAccess" true $spec | quote }}}
+                  # the path's other half: the fleet role's IAM gate only allows role writes
+                  # under /eks-fleet/ that carry its exact permissions boundary, so cluster
+                  # roles mint with the SSM-published boundary ARN (fleet-vend's
+                  # vend_permissions_boundary_arn cross-account, fleet-hub's
+                  # hub_permissions_boundary_arn same-account) — wired via the spec like
+                  # vendRoleArn. Empty = ungated (the local kind hub on user creds).
+                  - {key: cluster_permissions_boundary_arn, value: {{ dig "clusterPermissionsBoundaryArn" "" $spec | quote }}}
+                  - {key: cluster_endpoint_public_access, value: {{ dig "endpointPublicAccess" false $spec | quote }}}
                   - {key: max_azs, value: {{ dig "maxAzs" 3 $net | quote }}}
                   - {key: nat_gateways, value: {{ dig "natGateways" 1 $net | quote }}}
                   - {key: system_node_min_size, value: {{ dig "minSize" 2 $sys | quote }}}
                   - {key: system_node_max_size, value: {{ dig "maxSize" 6 $sys | quote }}}
                   - {key: system_node_desired_size, value: {{ dig "desiredSize" 2 $sys | quote }}}
                   - {key: system_node_disk_size, value: {{ dig "diskSize" 100 $sys | quote }}}
-                  # list-typed -> JSON string (tofu parses it as list(string)). Empty allowlist
-                  # = unrestricted (the cluster module's length>0 ? cidrs : ["0.0.0.0/0"]).
+                  # list-typed -> JSON string (tofu parses it as list(string)). The XRD's CEL
+                  # rule guarantees a public endpoint always carries a non-empty allowlist, so
+                  # the cluster module's empty-list -> ["0.0.0.0/0"] fallback never fires on a
+                  # vended cluster; an empty list only rides along while the endpoint is private.
                   - {key: cluster_endpoint_public_access_cidrs, value: {{ dig "endpointPublicAccessCidrs" (list) $spec | toJson | quote }}}
                   - {key: system_node_instance_types, value: {{ dig "instanceTypes" (list "m7g.xlarge" "m6g.xlarge") $sys | toJson | quote }}}
                   - {key: bootstrap_access_role_arn, value: {{ dig "bootstrapAccessRoleArn" "" $spec | quote }}}
@@ -140,6 +151,10 @@ spec:
                   - {key: oidc_provider_arn, value: {{ dig "oidcProviderArn" "" $st | quote }}}
                   - {key: oidc_issuer, value: {{ dig "oidcIssuer" "" $st | quote }}}
                   - {key: vpc_id, value: {{ dig "vpcId" "" $st | quote }}}
+                  # same fleet-role boundary as cluster-stack's cluster_permissions_boundary_arn:
+                  # the agent-platform operator role must carry the ceiling of the fleet role
+                  # minting it, or the IAM gate rejects the CreateRole.
+                  - {key: operator_permissions_boundary_arn, value: {{ dig "operatorPermissionsBoundaryArn" "" $spec | quote }}}
                   - {key: enable_agent_platform, value: {{ dig "enableAgentPlatform" true $spec | quote }}}
                   - {key: tenants_repo_url, value: {{ dig "tenantsRepoUrl" "" $spec | quote }}}
                 initArgs:

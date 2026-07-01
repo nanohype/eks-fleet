@@ -78,9 +78,16 @@ inputs (which wrap `landing-zone/components/aws/{network,cluster}`) field-for-fi
 | `systemNodes.*` | `system_node_*` | `oidcProviderArn` | `oidc_provider_arn` |
 | `network.vpcCidr` | (network) `vpc_cidr` | `oidcIssuer` | `oidc_issuer` |
 | `vendRoleArn` | `assume_role_arn` | `karpenterIamRoleArn` | `karpenter_iam_role_arn` |
+| `clusterPermissionsBoundaryArn` | `cluster_permissions_boundary_arn` | `vpcId` | `vpc_id` |
+| `operatorPermissionsBoundaryArn` | (bootstrap) `operator_permissions_boundary_arn` | | |
 
 When the cluster module gains a variable, the XRD gains the field and the
-composition templates one more var. No parallel vocabulary.
+composition templates one more var. No parallel vocabulary. The two boundary
+fields carry the fleet role's SSM-published permissions boundary
+(`vend_permissions_boundary_arn` cross-account, `hub_permissions_boundary_arn`
+same-account); they're wiring, not enforcement — the fleet roles' IAM gate only
+accepts role writes carrying the exact boundary, so a weaker value fails the
+vend rather than weakening it.
 
 ## provider-opentofu gotchas (designed-around)
 
@@ -207,10 +214,11 @@ bool/number from the string value), and the two **list-typed** fields —
 `endpointPublicAccessCidrs` and `systemNodes.instanceTypes` — as JSON via `toJson | quote`.
 provider-opentofu passes vars as `-var=key=value` flags, and tofu parses a `-var` value
 of `["a","b"]` as a real `list(string)`, so the JSON encoding round-trips — which is how
-the security-relevant `endpointPublicAccessCidrs` allowlist reaches the cluster (the
-cluster module treats an empty list as `["0.0.0.0/0"]`, so an empty allowlist =
-unrestricted; a set one restricts the public API). `endpointPublicAccess: false` remains
-the stronger control — a fully private API endpoint. Spec lookups use `dig` so an explicit
+the security-relevant `endpointPublicAccessCidrs` allowlist reaches the cluster. The API
+endpoint is private by default (`endpointPublicAccess: false`); public access is explicit
+opt-in, and a CEL rule on the XRD's spec rejects a public endpoint with an empty allowlist
+— so the cluster module's empty-list → `["0.0.0.0/0"]` fallback never fires on a vended
+cluster. Spec lookups use `dig` so an explicit
 `false` / `0` / empty list is honored, not collapsed to the default. Vars are keyed by name
 (not a position-coupled `vars[]` index), so adding a field is a one-line template edit.
 

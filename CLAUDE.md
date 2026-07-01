@@ -101,6 +101,15 @@ Secret) instead. The Workspace references it via
    it is not load-bearing for the assume-role. No new ClusterProviderConfig: the
    single `default` (source None) serves every account; cross-account targeting rides
    on `spec.vendRoleArn`, not on a per-account ProviderConfig.
+3. Set `spec.clusterPermissionsBoundaryArn` + `spec.operatorPermissionsBoundaryArn`
+   to that account's vend boundary (SSM
+   `/eks-fleet/<env>/fleet-vend/vend_permissions_boundary_arn`) — fleet-vend's IAM
+   gate only allows role writes carrying its exact boundary, so every role the vend
+   mints (cluster, nodes, Karpenter, the agent-platform operator) must ship with it.
+   The XRD rejects a `vendRoleArn` without both at admission; a wrong value can't
+   weaken anything (the gate 403s), it just fails the vend. Same-account hub vends
+   use the hub boundary (SSM `/eks-fleet/<env>/fleet-hub/hub_permissions_boundary_arn`)
+   instead; only the ungated local kind hub leaves them empty.
 
 ## Validation Commands
 

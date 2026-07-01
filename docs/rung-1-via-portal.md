@@ -129,7 +129,7 @@ kubectl apply -f eks-gitops/applicationsets/clusters-appset.yaml
 | Team | `platform` |
 | Environment | `dev` |
 | Kubernetes version | `1.35` |
-| Public API endpoint | your call |
+| Public API endpoint | off (private) is the default; opting in requires a CIDR allowlist |
 
 Submit → `202`. The worker renders the `Cluster` CR and pushes `clusters/dev/<name>.yaml` to the
 clusters repo. **Real spend begins once ArgoCD applies it and Crossplane starts the build.**

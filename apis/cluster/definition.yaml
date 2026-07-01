@@ -46,6 +46,31 @@ spec:
                     Cross-account role the entrypoint's provider assumes to provision
                     into a workload account. Empty = provision with the hub's own
                     credentials (same-account — e.g. the local kind-hub validation).
+                clusterPermissionsBoundaryArn:
+                  type: string
+                  default: ""
+                  description: >-
+                    Permissions-boundary ARN cluster-stack mints the cluster's IAM
+                    roles with — the boundary of whichever fleet role runs the vend,
+                    published to SSM by landing-zone: fleet-vend's
+                    /eks-fleet/<env>/fleet-vend/vend_permissions_boundary_arn for
+                    cross-account (set alongside vendRoleArn), fleet-hub's
+                    /eks-fleet/<env>/fleet-hub/hub_permissions_boundary_arn for a
+                    same-account hub vend. Enforcement lives in IAM, not here: the
+                    fleet roles' CreateRole/AttachRolePolicy gate only allows role
+                    writes carrying their exact boundary, so a weaker or missing
+                    value can't mint a weaker role — the vend just fails. Empty =
+                    ungated (e.g. the local kind hub on user credentials).
+                operatorPermissionsBoundaryArn:
+                  type: string
+                  default: ""
+                  description: >-
+                    Permissions-boundary ARN the bootstrap Workspace mints the
+                    agent-platform operator role with. Same value + SSM source as
+                    clusterPermissionsBoundaryArn (one fleet role runs both
+                    Workspaces, and its IAM gate covers both); a separate field
+                    because it feeds the cluster-bootstrap entrypoint's
+                    operator_permissions_boundary_arn var. Empty = ungated.
                 bootstrapAccessRoleArn:
                   type: string
                   default: ""
@@ -84,12 +109,20 @@ spec:
                   description: Kubernetes version.
                 endpointPublicAccess:
                   type: boolean
-                  default: true
+                  default: false
+                  description: >-
+                    Expose the EKS API on a public endpoint. Clusters vend private
+                    by default; public access is explicit opt-in and must carry a
+                    non-empty endpointPublicAccessCidrs allowlist (a CEL rule on
+                    spec rejects public-with-empty at admission).
                 endpointPublicAccessCidrs:
                   type: array
                   items: {type: string}
                   default: []
-                  description: CIDRs allowed to reach the public API (empty = unrestricted).
+                  description: >-
+                    CIDRs allowed to reach the public API endpoint. Required
+                    (non-empty) when endpointPublicAccess is true; irrelevant while
+                    the endpoint is private.
                 systemNodes:
                   type: object
                   # Default the whole object (like network): a default on a nested
@@ -147,7 +180,7 @@ spec:
                   # bump). Keep in lockstep with the same default in
                   # compositions/cluster-aws.yaml; bump both to roll the substrate
                   # forward (the SHA is a landing-zone main commit).
-                  default: "git::https://github.com/nanohype/landing-zone.git?ref=736678ee25160c40aaa875a564fcb525ce658bcb"
+                  default: "git::https://github.com/nanohype/landing-zone.git?ref=1ae86ccd49d8d2bc803786249a327f66a41cb762"
                   description: >-
                     Git source for the landing-zone repo the Workspace fetches; tofu runs
                     in the fleet/aws/cluster-stack subdir (set by the composition's
@@ -156,6 +189,26 @@ spec:
                 - account
                 - region
                 - team
+              x-kubernetes-validations:
+                # Public endpoint access is explicit opt-in and must carry its own
+                # allowlist: an empty CIDR list reaches the cluster module as
+                # ["0.0.0.0/0"], so reject public-with-empty at admission.
+                - rule: >-
+                    !has(self.endpointPublicAccess) || !self.endpointPublicAccess ||
+                    (has(self.endpointPublicAccessCidrs) && self.endpointPublicAccessCidrs.size() > 0)
+                  message: "endpointPublicAccess: true requires a non-empty endpointPublicAccessCidrs allowlist"
+                # A cross-account vend runs as the workload account's fleet-vend
+                # role, whose IAM gate rejects any role write that doesn't carry
+                # its permissions boundary — a vend ordered without the boundary
+                # ARNs 403s ~20 minutes into the apply. Reject it at admission.
+                - rule: >-
+                    !has(self.vendRoleArn) || self.vendRoleArn == "" ||
+                    (has(self.clusterPermissionsBoundaryArn) && self.clusterPermissionsBoundaryArn != "" &&
+                    has(self.operatorPermissionsBoundaryArn) && self.operatorPermissionsBoundaryArn != "")
+                  message: >-
+                    vendRoleArn requires clusterPermissionsBoundaryArn +
+                    operatorPermissionsBoundaryArn (the fleet-vend boundary, SSM
+                    /eks-fleet/<env>/fleet-vend/vend_permissions_boundary_arn)
             status:
               type: object
               properties:
