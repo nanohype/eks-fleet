@@ -20,11 +20,13 @@ eks-fleet/
 │   └── cluster-aws.yaml         # Composition: Cluster → provider-opentofu Workspace
 ├── config/
 │   ├── bootstrap/               # Management-cluster install: Crossplane + provider + functions
-│   ├── local/                   # Local kind hub: provider + Secret-cred ClusterProviderConfig
+│   ├── local/                   # Local kind hub: provider + ClusterProviderConfig (source None, creds via mounted Secret file)
 │   ├── functions.yaml           # function-go-templating + function-auto-ready
-│   └── providers/               # The hub ClusterProviderConfig (single, source None)
+│   ├── providers/               # The hub ClusterProviderConfig (single, source None)
+│   └── reaper.yaml              # Orphan-Workspace reaper CronJob
 ├── examples/                    # Sample Cluster resources
 ├── docs/                        # Architecture + design decisions
+├── scripts/                     # reap-orphans.sh (backs the reaper CronJob)
 ├── crossplane.yaml              # Package metadata (this repo as a Crossplane Configuration)
 └── Taskfile.yaml
 ```
@@ -67,8 +69,10 @@ A single cluster-scoped `ClusterProviderConfig` named `default` serves every
 account. Production uses `credentials: [{filename: aws-creds.ini, source: None}]` —
 no creds file is written, so the provider pod's ambient IRSA (the
 `provider-opentofu` ServiceAccount's `eks.amazonaws.com/role-arn`) supplies the AWS
-SDK credential chain. The local kind hub uses `source: Secret` (the `aws-creds`
-Secret) instead. The Workspace references it via
+SDK credential chain. The local kind hub uses the same `source: None`; there the
+credential chain resolves through the `aws-creds` Secret mounted onto the provider
+pod as a shared credentials file (`AWS_SHARED_CREDENTIALS_FILE`,
+`config/local/providers.yaml`). The Workspace references it via
 `providerConfigRef: {kind: ClusterProviderConfig, name: default}`.
 
 ### provider-opentofu gotchas (bake into the runtime config)

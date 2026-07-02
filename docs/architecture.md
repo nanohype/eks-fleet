@@ -57,9 +57,9 @@ provider blocks and `_envcommon` dependency wiring, so a `Workspace` cannot poin
 at `components/aws/cluster` directly.
 
 So the composition's `Workspace` points at a **plain-tofu entrypoint** — a thin
-root module that wires `network → cluster` (and later `cluster-bootstrap`,
-`agent-iam`) with explicit providers + vars, the same chaining the env tree does,
-made tofu-native. That entrypoint is `landing-zone/fleet/aws/cluster-stack/`: a tofu
+root module that wires `network → cluster` with explicit providers + vars, the
+same chaining the env tree does, made tofu-native (the k8s/helm side rides in a
+sibling entrypoint, `fleet/aws/cluster-bootstrap` — see below). That entrypoint is `landing-zone/fleet/aws/cluster-stack/`: a tofu
 root that `module`-calls the existing component modules, so everything stays in
 landing-zone. It owns the AWS provider (region + default_tags + an optional
 cross-account `assume_role`) and a partial `backend "s3" {}` block.
@@ -103,9 +103,9 @@ vend rather than weakening it.
   plus a static bucket + `encrypt`), which complete the entrypoint's partial
   `backend "s3" {}` block — so every `Cluster` gets an isolated state object.
 - **Git source** — `https://`, not SSH (no key in the Workspace pod).
-- **Cross-resource wiring** — if the entrypoint is split into multiple Workspaces
-  later, network→cluster outputs flow through the composite status (extra reconcile
-  loops). The single-entrypoint approach above avoids it.
+- **Cross-resource wiring** — splitting network and cluster into separate
+  Workspaces would route their outputs through the composite status (extra
+  reconcile loops). Keeping them in one entrypoint avoids that.
 
 ## Credentials and cross-account vending
 
@@ -134,29 +134,35 @@ alongside the resource.
 
 ## Where it plugs into the stack
 
-- **Order desk** — `portal` grows a `Cluster` form (it already registers clusters
-  + stores creds). `fab` does intake/validation.
+- **Order desk** — `portal`'s `Cluster` form places the order (portal also
+  registers clusters + stores creds); `fab` does intake/validation.
 - **Delivery** — ArgoCD on the management cluster applies the namespaced `Cluster`
   resources (GitOps), and bootstraps each new spoke (eks-gitops addons + the operator).
-- **QC** — extend `cloudgov` to audit clusters (not just tenants); Kyverno on the
-  `Cluster` resources.
+- **QC** — `cloudgov` audits the fleet's AWS surface: `cloudgov orphans` +
+  `cloudgov remediate --type orphans` back `scripts/reap-orphans.sh`'s
+  dead-cluster sweep.
 - **Runtime** — the management cluster's generic Crossplane/ArgoCD install rides
   in `eks-gitops` (it's just another cluster). This repo holds only the product
   definitions — mirroring the operator (eks-agent-platform) vs installs-it
   (eks-gitops) split.
 
-## Build roadmap
+## Validation ladder
 
-1. **The entrypoint** — the plain-tofu root that wraps `network → cluster`.
-2. **Rung 0** — stand up the management cluster; install Crossplane v2 + provider-opentofu.
-3. **Rung 1 — vend one cluster, same account.** A namespaced `Cluster` → an EKS
-   cluster in the management account (no cross-account yet). The cluster analog of
-   the operator's first reconcile. Validate teardown (delete the `Cluster` →
-   cluster gone).
-4. **Rung 2 — cross-account.** Add the `fleet-vend` role (landing-zone
-   `components/aws/fleet-vend/`); vend into workload-dev via `spec.vendRoleArn`.
-5. **Day-2** — once the API is proven, migrate the hot path to **Cluster API /
-   CAPA** for upgrade/lifecycle maturity (the `Cluster` resource stays the front door).
+Changes climb the same rungs every time — each rung a documented, repeatable
+exercise with its own teardown:
+
+1. **Local hub** — a kind hub (Crossplane v2 + provider-opentofu, `config/local/`)
+   vends a real EKS cluster from the workstation:
+   [rung-1-local-validation](rung-1-local-validation.md).
+2. **Ordered through portal** — the same vend placed as a portal order end to end:
+   [rung-1-via-portal](rung-1-via-portal.md).
+3. **Production hub** — stand up the management cluster and vend from it, same
+   account first, then cross-account via `spec.vendRoleArn` + the `fleet-vend`
+   role (landing-zone `components/aws/fleet-vend/`):
+   [stand-up-the-hub](stand-up-the-hub.md) → [production-go-live](production-go-live.md).
+
+Teardown at any rung is deleting the `Cluster` and letting the cascade run — see
+the [teardown runbook](runbooks/teardown.md).
 
 ## Teardown and orphan reaping
 
@@ -264,5 +270,5 @@ reconciler scoped to its own cluster. Consequently the spoke **self-registers** 
 cluster-bootstrap writing the in-cluster Secret is the whole registration; nothing needs
 to `argocd cluster add` a spoke to a central ArgoCD. (Portal's own cluster inventory is a
 separate concern — it records the vended cluster for connection-test + tenant vending,
-not for ArgoCD.) A single-pane-of-glass view, if wanted later, is a hub-level rollup over
-the spokes' ArgoCDs, not a centralized reconciler.
+not for ArgoCD.) A single-pane-of-glass view would be a hub-level rollup over the
+spokes' ArgoCDs, not a centralized reconciler.

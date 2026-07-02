@@ -34,13 +34,6 @@ the API — a team applies it directly in its own namespace, no claim involved.
 - `eks-agent-platform` — tenant control plane (spoke)
 - **`eks-fleet`** — **cluster control plane (hub)** ← this repo
 
-## Status
-
-The repo shape, the `Cluster` API surface, and the composition pattern are
-established; the build (the plain-tofu entrypoint the wrap needs, the
-management-cluster bootstrap, cross-account vending) is in flight. See
-[`docs/architecture.md`](docs/architecture.md) for the design + the open decisions.
-
 ## Prerequisites
 
 - A management Kubernetes cluster with Crossplane v2 installed
