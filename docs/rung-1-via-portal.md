@@ -145,8 +145,8 @@ aws eks describe-cluster --name dev-eks --region us-west-2   # ACTIVE in ~20-40 
 ```
 
 > `cluster-watchback` is off (local portal), so the UI won't flip the order to **active** or show
-> the spoke's live status — expected. Watch it with `kubectl`. (Live status in the UI is the
-> in-cluster topology, or a later UI change.)
+> the spoke's live status — expected. Watch it with `kubectl`. (The UI shows live status only
+> when portal runs the in-cluster topology.)
 
 ## 6. Teardown / verify zero-billable
 

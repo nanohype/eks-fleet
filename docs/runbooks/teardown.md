@@ -79,6 +79,5 @@ Once every spoke is gone:
 - **Bootstrap sizing.** A fresh spoke's bootstrap nodes must hold the addon
   catalog's pods before Karpenter scales out. eks-gitops enables Cilium ENI
   prefix-delegation (~4× IPs/node) and gives Karpenter a `system-cluster-critical`
-  priority so it isn't stranded; a smoke addon profile (skip the heavy catalog on
-  dev spokes) is tracked separately. A fresh spoke wedging on IPs or DNS is an
+  priority so it isn't stranded. A fresh spoke wedging on IPs or DNS is an
   eks-gitops-layer problem, not a vend failure.
