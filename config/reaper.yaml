@@ -70,7 +70,7 @@ spec:
             - name: reaper
               # kubectl + jq + sh. jq does the RFC3339 date math (fromdateiso8601),
               # so there's no GNU-vs-busybox `date -d` dependency. Pinned.
-              image: alpine/k8s:1.31.1
+              image: alpine/k8s:1.36.2
               imagePullPolicy: IfNotPresent
               securityContext:
                 allowPrivilegeEscalation: false
