@@ -8,9 +8,9 @@ kind: Function
 metadata:
   name: function-go-templating
   annotations:
-    render.crossplane.io/runtime-development-container-image: xpkg.upbound.io/crossplane-contrib/function-go-templating:v0.12.1
+    render.crossplane.io/runtime-development-container-image: xpkg.upbound.io/crossplane-contrib/function-go-templating:v0.12.2
 spec:
-  package: xpkg.upbound.io/crossplane-contrib/function-go-templating:v0.12.1
+  package: xpkg.upbound.io/crossplane-contrib/function-go-templating:v0.12.2
 ---
 apiVersion: pkg.crossplane.io/v1
 kind: Function
