@@ -82,9 +82,9 @@ spec:
                 remotePullPolicy: IfNotPresent
                 vars:
                   - {key: region, value: {{ $spec.region | quote }}}
-                  - {key: environment, value: {{ dig "environment" "dev" $spec | quote }}}
+                  - {key: environment, value: {{ dig "environment" "development" $spec | quote }}}
                   - {key: team, value: {{ $spec.team | quote }}}
-                  - {key: cluster_name, value: {{ dig "clusterName" "eks" $spec | quote }}}
+                  - {key: cluster_name, value: {{ $spec.clusterName | quote }}}
                   - {key: cluster_version, value: {{ dig "clusterVersion" "1.36" $spec | quote }}}
                   - {key: vpc_cidr, value: {{ dig "vpcCidr" "10.0.0.0/16" $net | quote }}}
                   - {key: assume_role_arn, value: {{ dig "vendRoleArn" "" $spec | quote }}}
@@ -142,7 +142,7 @@ spec:
                 remotePullPolicy: IfNotPresent
                 vars:
                   - {key: region, value: {{ $spec.region | quote }}}
-                  - {key: environment, value: {{ dig "environment" "dev" $spec | quote }}}
+                  - {key: environment, value: {{ dig "environment" "development" $spec | quote }}}
                   - {key: team, value: {{ $spec.team | quote }}}
                   - {key: assume_role_arn, value: {{ dig "vendRoleArn" "" $spec | quote }}}
                   - {key: cluster_name, value: {{ dig "clusterName" "" $st | quote }}}

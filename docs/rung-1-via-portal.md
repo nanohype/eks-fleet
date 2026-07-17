@@ -114,7 +114,7 @@ kubectl apply -f eks-gitops/applicationsets/clusters-appset.yaml
 > The appset is a **git-directory generator over `clusters/*`** → one Application per environment
 > dir, applied to the in-cluster hub with prune+selfHeal. The portal worker writes
 > `clusters/<env>/<name>.yaml`, so the paths line up. **This appset has been static-validated but
-> never run on a live hub** — after your first order, eyeball the `clusters-dev` Application
+> never run on a live hub** — after your first order, eyeball the `clusters-development` Application
 > (Synced/Healthy) and confirm it only reconciles on the hub (kx is your only cluster here, so
 > fine). *Verify on first use.*
 
@@ -127,21 +127,21 @@ kubectl apply -f eks-gitops/applicationsets/clusters-appset.yaml
 | Account | your management account |
 | Region | `us-west-2` |
 | Team | `platform` |
-| Environment | `dev` |
+| Environment | `development` |
 | Kubernetes version | `1.35` |
 | Public API endpoint | off (private) is the default; opting in requires a CIDR allowlist |
 
-Submit → `202`. The worker renders the `Cluster` CR and pushes `clusters/dev/<name>.yaml` to the
+Submit → `202`. The worker renders the `Cluster` CR and pushes `clusters/development/<name>.yaml` to the
 clusters repo. **Real spend begins once ArgoCD applies it and Crossplane starts the build.**
 
 ## 5. Watch the loop close
 
 ```bash
 # the order: portal UI shows the operation 'committed' (+ a git SHA); the file lands in the repo.
-kubectl get applications -n argocd | grep clusters     # the clusters-dev Application syncs
+kubectl get applications -n argocd | grep clusters     # the clusters-development Application syncs
 kubectl get cluster,workspace -n platform              # the Cluster XR + the two Workspaces
 kubectl describe workspace                             # tofu plan/apply progress
-aws eks describe-cluster --name dev-eks --region us-west-2   # ACTIVE in ~20-40 min
+aws eks describe-cluster --name development-eks --region us-west-2   # ACTIVE in ~20-40 min
 ```
 
 > `cluster-watchback` is off (local portal), so the UI won't flip the order to **active** or show
@@ -150,7 +150,7 @@ aws eks describe-cluster --name dev-eks --region us-west-2   # ACTIVE in ~20-40 
 
 ## 6. Teardown / verify zero-billable
 
-**Deprovision** in portal (or `git rm clusters/dev/<name>.yaml` in the clusters repo + push).
+**Deprovision** in portal (or `git rm clusters/development/<name>.yaml` in the clusters repo + push).
 prune+selfHeal deletes the `Cluster` → Crossplane `tofu destroy` (the teardown Usage orders
 bootstrap-before-stack, same as rung-1):
 

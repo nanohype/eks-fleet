@@ -129,10 +129,10 @@ metadata: { name: hub-smoke, namespace: platform }
 spec:
   account: "<fleet-account-id>"   # same account; vendRoleArn omitted -> hub's own creds
   region: us-west-2
-  environment: dev
+  environment: development
   team: platform
   # the hub role's IAM gate only mints roles carrying its boundary — wire the
-  # SSM-published ARN (/eks-fleet/dev/fleet-hub/hub_permissions_boundary_arn,
+  # SSM-published ARN (/eks-fleet/development/fleet-hub/hub_permissions_boundary_arn,
   # also fleet-hub's hub_permissions_boundary_arn output) onto both halves.
   clusterPermissionsBoundaryArn: "arn:aws:iam::<fleet-account-id>:policy/eks-fleet/eks-fleet-hub-boundary"
   operatorPermissionsBoundaryArn: "arn:aws:iam::<fleet-account-id>:policy/eks-fleet/eks-fleet-hub-boundary"

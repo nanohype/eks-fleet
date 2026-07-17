@@ -34,8 +34,8 @@ spec:
                   description: AWS region.
                 environment:
                   type: string
-                  default: dev
-                  description: Environment tier (dev | staging | production) — prefixes resource names + tags.
+                  default: development
+                  description: Environment tier (development | staging | production) — prefixes resource names + tags.
                 team:
                   type: string
                   description: Owning team (tagging + ownership).
@@ -101,8 +101,17 @@ spec:
                 # --- cluster (landing-zone components/aws/cluster) ------------
                 clusterName:
                   type: string
-                  default: eks
-                  description: Cluster base name; the module prefixes it with environment.
+                  maxLength: 12
+                  pattern: '^[a-z0-9]([a-z0-9-]{0,10}[a-z0-9])?$'
+                  description: >-
+                    Cluster base name; the module prefixes it with environment to form the
+                    EKS cluster name <environment>-<clusterName>. Required and unique per
+                    (account, region, environment) — there is no default, because a shared
+                    default collides the moment a second cluster is vended into one account
+                    and environment. Must not equal the environment token. Capped at 12
+                    characters so the derived <environment>-<clusterName> keeps the tightest
+                    cluster-scoped S3 name (agent-iam's account+region-qualified
+                    model-artifacts bucket) within S3's 63-char limit in us-west-2.
                 clusterVersion:
                   type: string
                   default: "1.36"
@@ -189,7 +198,13 @@ spec:
                 - account
                 - region
                 - team
+                - clusterName
               x-kubernetes-validations:
+                # The EKS cluster name is <environment>-<clusterName>; if the two are
+                # equal the name doubles (development-development-*). Reject at admission
+                # — this is the collision guard the whole cluster-naming scheme depends on.
+                - rule: self.clusterName != self.environment
+                  message: "clusterName must not equal environment (the cluster name would double, e.g. development-development)"
                 # Public endpoint access is explicit opt-in and must carry its own
                 # allowlist: an empty CIDR list reaches the cluster module as
                 # ["0.0.0.0/0"], so reject public-with-empty at admission.

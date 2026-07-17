@@ -46,7 +46,7 @@ Every `Cluster`:
 1. Pick the target workload account; ensure its `fleet-vend` role exists
    (landing-zone `components/aws/fleet-vend/`) — the cross-account role the hub
    assumes. A same-account vend needs nothing here.
-2. Copy `examples/cluster-dev.yaml`, set `metadata.namespace`,
+2. Copy `examples/cluster-development.yaml`, set `metadata.namespace`,
    `spec.region`, `spec.account`, and the node sizing.
 3. `kubectl apply -f` it to the management cluster. ArgoCD does this in the real
    flow; `kubectl` is the manual path.
