@@ -8,12 +8,16 @@
 apiVersion: fleet.nanohype.dev/v1alpha1
 kind: Cluster
 metadata:
-  name: prod-eks
+  name: production-analytics
   namespace: platform
 spec:
   account: "222222222222"
   region: us-west-2
   environment: production
+  # Cluster base name; the EKS cluster becomes <environment>-<clusterName>
+  # (production-analytics). Required, unique per (account, region, environment),
+  # and must not equal environment.
+  clusterName: analytics
   team: platform
   clusterVersion: "1.35"
   # cross-account: assume the workload account's fleet-vend role to provision,

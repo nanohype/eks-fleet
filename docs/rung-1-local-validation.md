@@ -108,7 +108,7 @@ metadata: { name: fleet-smoke, namespace: platform }
 spec:
   account: "111111111111"  # your management account
   region: us-west-2
-  environment: dev
+  environment: development
   team: platform
   # vendRoleArn omitted -> same-account, uses the hub's creds
   # ttlDays: 1   # tags the spoke Lifecycle=ephemeral + Expiry; the reaper would
@@ -141,10 +141,10 @@ marks the `Cluster` Ready once both converge.
 
 - `kubectl get cluster fleet-smoke -n platform` shows the status populated
   (`clusterEndpoint`, `oidcProviderArn`, `oidcIssuer`, `vpcId`).
-- `aws eks describe-cluster --name dev-eks --region us-west-2` → ACTIVE.
+- `aws eks describe-cluster --name development-eks --region us-west-2` → ACTIVE.
 - Get a kubeconfig for the vended (spoke) cluster — its API is separate from the kx hub:
   ```bash
-  aws eks update-kubeconfig --name dev-eks --region us-west-2 \
+  aws eks update-kubeconfig --name development-eks --region us-west-2 \
     --kubeconfig /tmp/fleet-smoke.kubeconfig
   ```
   (Alternatively, pull the `fleet-smoke-kubeconfig` connection Secret the Composition
@@ -161,7 +161,7 @@ kubectl delete cluster fleet-smoke -n platform   # provider-opentofu runs tofu d
 kubectl get workspace -w                # wait until BOTH workspaces are gone
 # confirm:
 aws eks list-clusters --region us-west-2          # []
-aws ec2 describe-vpcs --filter Name=tag:Project,Values=landing-zone Name=tag:Environment,Values=dev Name=isDefault,Values=false
+aws ec2 describe-vpcs --filter Name=tag:Project,Values=landing-zone Name=tag:Environment,Values=development Name=isDefault,Values=false
 (cd ../kx && task down)                 # tear down the local hub (subshell; stay in eks-fleet)
 ```
 

@@ -24,7 +24,7 @@ a cluster is*; `eks-fleet` is the Kubernetes-native ordering API that runs it.
                                        │ assume-role (IRSA chain)
                 ┌──────────────────────┼──────────────────────────────────┐
                 ▼                       ▼                                  ▼
-        workload-dev account          workload-staging            workload-prod
+        workload-development account  workload-staging            workload-production
         EKS (the product)             EKS                          EKS
         + per-cluster eks-agent-platform operator (its own tenant control plane)
 ```

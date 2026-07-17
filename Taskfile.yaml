@@ -14,7 +14,7 @@ tasks:
   render:
     desc: Render a namespaced Cluster to the managed resources it produces
     vars:
-      EXAMPLE: '{{.EXAMPLE | default "examples/cluster-dev.yaml"}}'
+      EXAMPLE: '{{.EXAMPLE | default "examples/cluster-development.yaml"}}'
     cmds:
       - crossplane render {{.EXAMPLE}} compositions/cluster-aws.yaml config/functions.yaml
 
