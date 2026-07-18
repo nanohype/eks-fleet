@@ -89,7 +89,7 @@ kubectl apply -f config/reaper.yaml          # hourly reaper: deletes Cluster CR
 > The Workspace fetches `landing-zone` at a pinned commit SHA (the `Cluster`'s
 > `moduleSource` default) and runs `tofu` in the
 > `fleet/aws/cluster-stack` subdir (the composition's `entrypoint`). provider-opentofu
-> v1.1.3 ships tofu 1.10.0, so the pinned commit must carry the `>= 1.10.0` floor. Apply a fresh
+> v1.1.4 ships tofu 1.10.8, so the pinned commit must carry the `>= 1.10.0` floor. Apply a fresh
 > `Cluster` (don't mutate one in place — `remotePullPolicy: IfNotPresent` caches the
 > working dir, and a pod roll mid-apply orphans resources from the Workspace's state).
 

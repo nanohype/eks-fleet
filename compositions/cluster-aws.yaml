@@ -52,7 +52,7 @@ spec:
             {{- /* Pinned landing-zone SHA (not ?ref=main): provider-opentofu caches by ref */}}
             {{- /* + never re-pulls, so a moving ref is non-reproducible. Lockstep with the */}}
             {{- /* XRD moduleSource default in apis/cluster/definition.yaml. */}}
-            {{- $module := dig "moduleSource" "git::https://github.com/nanohype/landing-zone.git?ref=1ae86ccd49d8d2bc803786249a327f66a41cb762" $spec }}
+            {{- $module := dig "moduleSource" "git::https://github.com/nanohype/landing-zone.git?ref=9243a18005f92fb932a766537bb88c5becfeb759" $spec }}
             {{- /* cluster-stack's fresh tofu outputs (empty until it has applied) */}}
             {{- $cs := index (.observed.resources | default dict) "cluster-stack" }}
             {{- $csOut := dict }}
@@ -173,6 +173,13 @@ spec:
                   - {key: cluster_certificate_authority_data, value: {{ dig "certificateAuthorityData" "" $st | quote }}}
                   - {key: oidc_provider_arn, value: {{ dig "oidcProviderArn" "" $st | quote }}}
                   - {key: oidc_issuer, value: {{ dig "oidcIssuer" "" $st | quote }}}
+                  # agent-iam encrypts the model-artifacts + eval-reports buckets with the
+                  # spoke's secrets-component data CMK. A spoke prerequisite referenced by
+                  # ARN (like vendRoleArn / the boundaries), not something the vend creates:
+                  # cluster-stack has no secrets module, so the order desk supplies the ARN
+                  # (SSM /platform/<env>/secrets/kms-key-arn in the spoke) via spec.dataKmsKeyArn.
+                  # Empty = ungated local/hub validation (no real artifacts bucket).
+                  - {key: data_kms_key_arn, value: {{ dig "dataKmsKeyArn" "" $spec | quote }}}
                   - {key: vpc_id, value: {{ dig "vpcId" "" $st | quote }}}
                   # network topology for the in-cluster ArgoCD Secret + kube-system/network-config
                   # ConfigMap: network_mode is the spec's mode (a deterministic input); the subnet
@@ -190,6 +197,11 @@ spec:
                   - {key: operator_permissions_boundary_arn, value: {{ dig "operatorPermissionsBoundaryArn" "" $spec | quote }}}
                   - {key: enable_agent_platform, value: {{ dig "enableAgentPlatform" true $spec | quote }}}
                   - {key: tenants_repo_url, value: {{ dig "tenantsRepoUrl" "" $spec | quote }}}
+                  # addon-catalog GitOps repo the spoke's app-of-apps tracks. Required +
+                  # git-URL-validated by the substrate (no default there), so always sent;
+                  # defaults to the org's eks-gitops catalog via the XRD.
+                  - {key: gitops_repo_url, value: {{ dig "gitopsRepoUrl" "https://github.com/nanohype/eks-gitops.git" $spec | quote }}}
+                  - {key: gitops_repo_branch, value: {{ dig "gitopsRepoBranch" "main" $spec | quote }}}
                 initArgs:
                   - "-backend-config=bucket=nanohype-eks-fleet-tfstate"
                   - "-backend-config=key=fleet/{{ $name }}-bootstrap/terraform.tfstate"
