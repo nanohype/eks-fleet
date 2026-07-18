@@ -17,6 +17,7 @@ landing-zone SHA doesn't declare.
 |---|---|---|
 | 27 | CRITICAL: fix the broken `moduleSource` pin | ✅ #17 |
 | 33 | State integrity + doc fixes | ✅ #18 |
+| 36 | Phase 11 polish: render-fixture gate, CLI checksum, gate docs, creds scrub, version-floor rationale, credentialed plan | ✅ #19 |
 
 ---
 
@@ -227,3 +228,68 @@ manifest.
    CRD, its reject fixture is admitted — so the harness fails on a real regression,
    not just malformed YAML. Wired as `task cel-test` + a `helm/kind-action@v1.14.0`
    CI job. `task validate` (yamllint + substrate contract + render) stays green.
+
+## Target 36 — Phase 11 polish (S)
+
+Six items from the 2026-07-18 exit-verification re-audit; all six actioned.
+
+**Outcome (✅ #19):**
+
+1. **Observed-status render fixture.** The render job only exercised the always-on
+   cluster-stack Workspace — examples carry no status, so `crossplane render` never
+   entered the status-gated blocks (cluster-bootstrap Workspace, its teardown
+   `Usage`, and the status write-back). Confirmed the dark branch with a baseline
+   render (only `Cluster` + one `cluster-stack` Workspace). Built `tests/render/`: a
+   Cluster fixture with a synthetic converged status (lights `{{ if $endpoint }}`)
+   + `tests/render/observed/cluster-stack.yaml` with tofu outputs fed via
+   `--observed-resources` (lights `{{ if $csEndpoint }}`). **Gotcha, verified by
+   probing:** `crossplane render` drops an observed resource unless it carries
+   `labels.crossplane.io/composite: <xr-name>` — `.observed.resources` came back
+   empty until that label was added; error-injection proved the write-back branch is
+   actually entered. Wired into the render CI job (`--observed-resources`) and
+   `task validate`. Render now emits all four docs (Cluster + bootstrap + Usage +
+   stack) and the composite status carries write-back-only fields
+   (`karpenterIamRoleArn`, `subnetAzIds`).
+
+2. **Creds example scrub + it never shipped.** Fixed the `provider-terraform` →
+   `provider-opentofu` wording and the personal profile name (`stxkxs` → `fleet-admin`,
+   the repo's own convention). **But** `config/local/aws-creds.secret.example.yaml`
+   was gitignored by `*secret*.yaml` and never tracked — the scrub wouldn't ship and
+   there was no public exposure to begin with. The file's own text ("This .example is
+   the shape only") + the org's `!.env.example` convention (eks-agent-platform) show
+   it's meant to be a committed template. Added a `!*.secret.example.yaml` negation and
+   committed the scrubbed template; real filled `aws-creds.secret.yaml` copies stay
+   ignored (verified with `git check-ignore`).
+
+3. **Gate inventory refreshed.** README Commands + CLAUDE.md CI/Validation sections
+   described only "yamllint + crossplane render"; now document all four gates (lint,
+   substrate-contract, render, cel-tests) and add `task contract` / `task cel-test`.
+
+4. **Version floor reconciled.** Researched provider-opentofu releases: v1.1.0 bumped
+   bundled tofu to 1.10.8 (v1.0.5 already shipped 1.10.0), so the `>=v1.1.0` floor
+   *already* satisfies `use_lockfile` (tofu ≥ 1.10). No bump needed — added a comment
+   documenting the floor is load-bearing so nobody lowers it below the tofu-1.10 line.
+
+5. **CLI checksum.** Replaced the ELF-sniff with a `sha256sum -c` gate. Discovered the
+   published `crank.sha256` is **stale** (`9d2c8bba…` vs the real `cb1fc84c…`, verified
+   across two downloads), so pinned the verified digest in the workflow instead —
+   version + digest as job env, stronger than the CDN-served file. Tested: passes the
+   real binary, fails a corrupted download and an error-page-served-as-200. Confirmed
+   green in real CI on PR #19.
+
+6. **Credentialed `tofu plan` — RAN FOR REAL.** SSO session was live (home account,
+   admin). Set up a landing-zone worktree at the pinned SHA, fed the composition's
+   exact create-mode cluster-stack var set, and planned against live AWS (local
+   backend). It resolved the **entire AWS data-source layer** and built the full
+   resource graph — the gap prior audits couldn't reach (they stopped at credential
+   resolution). `tofu plan -exclude=…subnet_cluster_ownership` → **`Plan: 104 to add`**,
+   zero data-source/variable errors. **Surfaced a real landing-zone substrate bug**
+   (out of scope here): `components/aws/cluster/subnet_tags.tf:22` uses `for_each` over
+   `module.network`-created subnet IDs (unknown-until-apply), so a create-mode
+   from-scratch vend fails at plan. Present at landing-zone HEAD too; the network-idiom
+   restructure introduced it and no real plan had exercised it since. Filed as
+   **landing-zone#155** with file:line + the `count`-based fix. Not fixable in eks-fleet
+   (substrate layer); the eks-fleet pin can't route around it since HEAD has the same bug.
+
+Verification: `task validate` green (yamllint + substrate-contract + all examples +
+gated-branch fixture), `task cel-test` 11/11, all eight CI checks green on #19.
