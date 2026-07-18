@@ -1,0 +1,14 @@
+# The EKS cluster name is <environment>-<clusterName>; if the two are equal the name
+# doubles (staging-staging-*). The XRD's CEL rule must reject the collision at admission.
+# EXPECT: clusterName must not equal environment
+apiVersion: fleet.nanohype.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: reject-name-doubles
+  namespace: platform
+spec:
+  account: "111111111111"
+  region: us-west-2
+  environment: staging
+  clusterName: staging
+  team: platform

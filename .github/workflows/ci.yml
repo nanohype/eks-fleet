@@ -74,11 +74,35 @@ jobs:
             echo "::endgroup::"
           done
 
+  cel-tests:
+    name: CEL admission tests
+    runs-on: ubuntu-latest
+    needs: lint
+    # crossplane render never evaluates CEL, so the XRD's x-kubernetes-validations
+    # (public-endpoint-with-empty-allowlist, adopt-mode preconditions, the
+    # boundary-ARN requirement, the name-doubling guard, the network mutual-exclusion
+    # rules) are otherwise unproven. This job derives a plain CRD from the XRD, installs
+    # it on a kind cluster, and asserts each reject fixture is denied at admission with
+    # its declared message and each accept fixture + example is admitted.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: helm/kind-action@v1.14.0
+        with:
+          cluster_name: eks-fleet-cel
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+      - name: run CEL admission tests
+        env:
+          CEL_TEST_CLUSTER: eks-fleet-cel
+        run: scripts/cel-admission-test.sh
+
   pr-summary:
     name: PR Summary
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
-    needs: [lint, substrate-contract, render]
+    needs: [lint, substrate-contract, render, cel-tests]
     permissions:
       pull-requests: write
     steps:
@@ -89,5 +113,5 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: "## CI\nyamllint + substrate contract + crossplane render passed."
+              body: "## CI\nyamllint + substrate contract + crossplane render + CEL admission tests passed."
             });

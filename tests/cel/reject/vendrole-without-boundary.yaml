@@ -1,0 +1,18 @@
+# A cross-account vend runs as the workload account's fleet-vend role, whose IAM
+# gate rejects any role write that doesn't carry its permissions boundary. A
+# vendRoleArn without both boundary ARNs would 403 ~20 min into the apply, so the
+# XRD's CEL rule must reject it at admission.
+# EXPECT: vendRoleArn requires clusterPermissionsBoundaryArn
+apiVersion: fleet.nanohype.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: reject-vendrole-no-boundary
+  namespace: platform
+spec:
+  account: "222222222222"
+  region: us-west-2
+  environment: development
+  clusterName: eks
+  team: platform
+  vendRoleArn: "arn:aws:iam::222222222222:role/development-eks-fleet-vend"
+  # clusterPermissionsBoundaryArn + operatorPermissionsBoundaryArn omitted -> rejected

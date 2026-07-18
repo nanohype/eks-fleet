@@ -40,6 +40,7 @@ spec:
             {{- $xr := .observed.composite.resource }}
             {{- $spec := $xr.spec }}
             {{- $name := $xr.metadata.name }}
+            {{- $ns := $xr.metadata.namespace }}
             {{- $net := $spec.network | default dict }}
             {{- /* network is discriminated on mode: create reads $create, adopt reads */}}
             {{- /* $adopt. Both sub-objects default to empty here, so a spec that fills */}}
@@ -138,8 +139,19 @@ spec:
                   - {key: ttl_days, value: {{ dig "ttlDays" 0 $spec | quote }}}
                 initArgs:
                   - "-backend-config=bucket=nanohype-eks-fleet-tfstate"
-                  - "-backend-config=key=fleet/{{ $name }}/terraform.tfstate"
-                  - "-backend-config=region={{ $spec.region }}"
+                  # namespace-qualified state key: the Cluster name is unique only within
+                  # its namespace (two teams may each vend a `foo`), so the namespace rides
+                  # the key. Without it, two same-named Clusters in two namespaces would
+                  # share one state object and clobber each other's cluster.
+                  - "-backend-config=key=fleet/{{ $ns }}/{{ $name }}/terraform.tfstate"
+                  # the state bucket is a single hub-account resource pinned to us-west-2 (it
+                  # never moves with the workload region); the S3 backend validates the bucket
+                  # against this region, so it's the bucket's region, NOT spec.region. Decoupled
+                  # so a vend into any region still inits against the one real state bucket.
+                  - "-backend-config=region=us-west-2"
+                  # S3-native state locking (tofu >= 1.10, which provider-opentofu v1.1.4 ships):
+                  # a lock file in the same bucket, no DynamoDB table.
+                  - "-backend-config=use_lockfile=true"
                   - "-backend-config=encrypt=true"
             {{- if $endpoint }}
             ---
@@ -204,8 +216,12 @@ spec:
                   - {key: gitops_repo_branch, value: {{ dig "gitopsRepoBranch" "main" $spec | quote }}}
                 initArgs:
                   - "-backend-config=bucket=nanohype-eks-fleet-tfstate"
-                  - "-backend-config=key=fleet/{{ $name }}-bootstrap/terraform.tfstate"
-                  - "-backend-config=region={{ $spec.region }}"
+                  # namespace-qualified, same as cluster-stack (see the note there); the
+                  # -bootstrap suffix keeps the two Workspaces' state objects distinct.
+                  - "-backend-config=key=fleet/{{ $ns }}/{{ $name }}-bootstrap/terraform.tfstate"
+                  # the state bucket's own region (us-west-2), decoupled from spec.region.
+                  - "-backend-config=region=us-west-2"
+                  - "-backend-config=use_lockfile=true"
                   - "-backend-config=encrypt=true"
             ---
             # teardown ordering: cluster-bootstrap's `tofu destroy` needs the spoke API that

@@ -31,7 +31,13 @@ spec:
                   description: Workload AWS account id (records + tags). Cross-account targeting is via spec.vendRoleArn (the order desk sets the fleet-vend role ARN); empty = same-account.
                 region:
                   type: string
-                  description: AWS region.
+                  description: >-
+                    AWS region the cluster is vended into. Any region is valid —
+                    the tofu state backend is decoupled from it: state always lives
+                    in the single hub-account bucket (nanohype-eks-fleet-tfstate,
+                    us-west-2), never in a per-region bucket that would have to track
+                    this value. So a vend into us-east-1 builds the cluster there but
+                    stores its state in us-west-2.
                 environment:
                   type: string
                   default: development

@@ -130,6 +130,9 @@ spec:
   account: "<fleet-account-id>"   # same account; vendRoleArn omitted -> hub's own creds
   region: us-west-2
   environment: development
+  # required base name; the EKS cluster becomes <environment>-<clusterName>
+  # (development-eks). Validate + tear down per rung-1 §8-9, which references it.
+  clusterName: eks
   team: platform
   # the hub role's IAM gate only mints roles carrying its boundary — wire the
   # SSM-published ARN (/eks-fleet/development/fleet-hub/hub_permissions_boundary_arn,

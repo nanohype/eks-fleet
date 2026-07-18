@@ -56,7 +56,8 @@ Common shapes:
 
 - **AWS API error** (quota, IAM denied, capacity) → fix the underlying AWS
   condition; the Workspace re-applies on the next reconcile.
-- **tofu state lock / backend error** → the S3 backend (`fleet/<name>/terraform.tfstate`)
+- **tofu state lock / backend error** → the S3 backend
+  (`fleet/<namespace>/<name>/terraform.tfstate`, locked S3-natively via `use_lockfile`)
   is locked or unreachable. Confirm the state bucket + the Workspace's
   `initArgs` backend-config.
 - **Module/source error** → the landing-zone cluster-stack entrypoint (the

@@ -39,6 +39,16 @@ tasks:
         done
       - echo "All validations passed."
 
+  cel-test:
+    desc: >-
+      Prove the XRD's CEL guardrails actually reject bad specs. Stands up a
+      throwaway kind cluster, installs the CRD derived from the XRD, and asserts
+      every tests/cel/reject/*.yaml is denied at admission (with its declared
+      message) and every accept fixture + example is admitted. Needs kind + docker;
+      crossplane render can't evaluate CEL, so this is its only proof.
+    cmds:
+      - scripts/cel-admission-test.sh
+
   reap-orphans:
     desc: "Sweep cluster resources tofu can't reach (orphan log groups + Karpenter infra). DRY-RUN unless APPLY=1. PROFILE required."
     vars:

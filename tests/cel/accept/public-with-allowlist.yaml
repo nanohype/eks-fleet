@@ -1,0 +1,17 @@
+# A public endpoint carrying a non-empty CIDR allowlist is the valid public-opt-in
+# shape — the positive counterpart to reject/public-endpoint-empty-allowlist.yaml.
+# Must be admitted.
+apiVersion: fleet.nanohype.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: accept-public-allowlisted
+  namespace: platform
+spec:
+  account: "111111111111"
+  region: us-west-2
+  environment: development
+  clusterName: eks
+  team: platform
+  endpointPublicAccess: true
+  endpointPublicAccessCidrs:
+    - "203.0.113.0/24"

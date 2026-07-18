@@ -1,0 +1,19 @@
+# A VPC CIDR comes from exactly one source: an IPAM pool OR a literal vpcCidr, never
+# both. With an IPAM pool set and a non-default vpcCidr, the XRD's CEL rule must reject it.
+# EXPECT: mutually exclusive
+apiVersion: fleet.nanohype.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: reject-ipam-and-cidr
+  namespace: platform
+spec:
+  account: "111111111111"
+  region: us-west-2
+  environment: development
+  clusterName: eks
+  team: platform
+  network:
+    mode: create
+    create:
+      ipamPoolId: "ipam-pool-0abc123"
+      vpcCidr: "10.7.0.0/16"

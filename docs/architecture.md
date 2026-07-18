@@ -99,9 +99,17 @@ vend rather than weakening it.
   runtime config sets `--poll=1m` so the status reflects the Workspace promptly.
 - **State** — not persisted in-pod; every Workspace uses the shared S3 backend.
   The per-cluster state key rides on the Workspace `initArgs`
-  (`-backend-config=key=fleet/<name>/terraform.tfstate`, `-backend-config=region=<region>`,
-  plus a static bucket + `encrypt`), which complete the entrypoint's partial
-  `backend "s3" {}` block — so every `Cluster` gets an isolated state object.
+  (`-backend-config=key=fleet/<namespace>/<name>/terraform.tfstate`, plus the static
+  bucket + `region=us-west-2` + `use_lockfile=true` + `encrypt`), which complete the
+  entrypoint's partial `backend "s3" {}` block — so every `Cluster` gets a state
+  object isolated by (namespace, name). The key carries the **namespace** because a
+  `Cluster` name is unique only within its namespace (two teams may each vend a
+  `foo`), so a name-only key would collide across namespaces. The backend `region` is
+  the **state bucket's** region (us-west-2), not `spec.region` — the bucket is one
+  hub-account resource that never moves with the workload region, and the S3 backend
+  validates it against that region; coupling it to `spec.region` would fail
+  `tofu init` for every out-of-region vend. Locking is S3-native
+  (`use_lockfile`, tofu >= 1.10) — a lock file in the same bucket, no DynamoDB table.
 - **Git source** — `https://`, not SSH (no key in the Workspace pod).
 - **Cross-resource wiring** — splitting network and cluster into separate
   Workspaces would route their outputs through the composite status (extra
