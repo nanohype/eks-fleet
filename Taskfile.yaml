@@ -37,6 +37,15 @@ tasks:
           echo "render $ex"
           crossplane render "$ex" compositions/cluster-aws.yaml config/functions.yaml >/dev/null
         done
+      # The examples carry no status, so the loop above only renders the always-on
+      # cluster-stack Workspace. This fixture supplies a converged status + an observed
+      # cluster-stack Workspace so render also exercises the status-gated branches (the
+      # cluster-bootstrap Workspace, its teardown Usage, and the status write-back) —
+      # the dark branch where a missing bootstrap var otherwise hides until a live vend.
+      - |
+        echo "render tests/render/cluster-with-status.yaml (gated branches)"
+        crossplane render tests/render/cluster-with-status.yaml compositions/cluster-aws.yaml config/functions.yaml \
+          --observed-resources tests/render/observed >/dev/null
       - echo "All validations passed."
 
   cel-test:

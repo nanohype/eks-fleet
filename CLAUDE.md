@@ -97,7 +97,9 @@ pod as a shared credentials file (`AWS_SHARED_CREDENTIALS_FILE`,
 1. Edit `apis/cluster/definition.yaml` (the openAPIV3Schema) to add the field.
 2. Template it onto the Workspace var in `compositions/cluster-aws.yaml` (a
    `{key, value}` entry; list-typed fields go through `toJson | quote`).
-3. `task validate` — yamllint + render the examples.
+3. `task validate` — yamllint + substrate-contract check + render the examples
+   (and the gated-branch fixture). If the new field feeds a Workspace var, the
+   substrate-contract gate also checks the pinned landing-zone commit declares it.
 
 ### Add a workload account (vend into a new spoke)
 1. Provision the `fleet-vend` role in that account (landing-zone
@@ -121,14 +123,33 @@ pod as a shared credentials file (`AWS_SHARED_CREDENTIALS_FILE`,
 ## Validation Commands
 
 ```bash
-task validate    # yamllint + crossplane render the examples against the compositions
+task validate    # yamllint + substrate-contract check + crossplane render (examples + gated-branch fixture)
+task contract    # diff the composition's templated var keys against the pinned landing-zone substrate
 task render      # render a sample Cluster → the managed resources
+task cel-test    # prove the XRD's CEL guardrails reject bad specs (throwaway kind cluster)
 ```
 
 ## CI
 
-- PR + push to `main` → `.github/workflows/ci.yml`: yamllint, then `crossplane render`
-  each example against the compositions (catches schema/template drift without a cluster).
+`.github/workflows/ci.yml` runs four gates on every PR + push to `main`, none of
+which needs a live cluster:
+
+- **lint** — `yamllint` over all manifests.
+- **substrate-contract** — `scripts/check-substrate-contract.py`: at the pinned
+  landing-zone SHA, diffs the composition's templated Workspace var keys against
+  each entrypoint's `variables.tf` (fails on an undeclared var *or* a missing
+  required one) and asserts the XRD + composition pins move in lockstep.
+  `crossplane render` never runs tofu, so this is what catches a composition ↔
+  substrate contract break before a live vend hits it.
+- **render** — installs the crossplane CLI (checksum-verified) and `crossplane
+  render`s every example against the composition, plus a status-augmented fixture
+  (`tests/render/`) that exercises the status-gated branches — the
+  cluster-bootstrap Workspace, its teardown `Usage`, and the status write-back —
+  which the plain examples never reach.
+- **cel-tests** — derives a plain CRD from the XRD, installs it on a throwaway
+  kind cluster, and asserts each `tests/cel/reject/*.yaml` is denied at admission
+  (with its declared message) and each accept fixture + example is admitted, since
+  `crossplane render` never evaluates the XRD's CEL guardrails.
 
 ## Claude Code Tooling
 

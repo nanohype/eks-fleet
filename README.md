@@ -42,8 +42,10 @@ the API — a team applies it directly in its own namespace, no claim involved.
 ## Commands
 
 ```bash
-task validate     # yamllint + crossplane render the examples against the compositions
+task validate     # yamllint + substrate-contract check + crossplane render (examples + gated-branch fixture)
+task contract     # diff the composition's templated var keys against the pinned landing-zone substrate
 task render       # render a sample Cluster to the managed resources it produces
+task cel-test     # prove the XRD's CEL guardrails reject bad specs (spins a throwaway kind cluster)
 ```
 
 ## License

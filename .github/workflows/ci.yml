@@ -45,34 +45,63 @@ jobs:
     name: Render compositions
     runs-on: ubuntu-latest
     needs: lint
+    env:
+      # crank CLI + render-engine image version (kept identical between the two), and
+      # the verified sha256 of the linux_amd64 crank binary at that version.
+      CRANK_VERSION: v2.3.1
+      # releases.crossplane.io publishes a crank.sha256 next to the binary, but it is
+      # stale for this release (it does not match the shipped artifact), so the trusted
+      # digest is pinned here instead — reviewed in-repo, independent of the CDN. Bump
+      # it in lockstep whenever CRANK_VERSION moves; the gate below fails until you do.
+      CRANK_SHA256: cb1fc84c0f04b7b3b88374a8037701b6c65a36007c28544968bde1011ca5491e
     steps:
       - uses: actions/checkout@v4
       - name: install crossplane CLI
         run: |
-          url=https://releases.crossplane.io/stable/v2.3.1/bin/linux_amd64/crank
+          url="https://releases.crossplane.io/stable/${CRANK_VERSION}/bin/linux_amd64/crank"
           # releases.crossplane.io intermittently 403s for a minute or two. -f fails on
           # HTTP errors (no error-page saved); --retry-all-errors retries the 403 too;
           # a wide retry window (10 × ~6s, capped at 3m) rides out the CDN blip instead
           # of failing the run. (Bumped after the 5×3s window lost to a longer 403.)
           curl -fsSL --retry 10 --retry-delay 6 --retry-max-time 180 --retry-all-errors -o crossplane "$url"
-          # a CDN error page can still slip through as HTTP 200 — verify it's a real binary
-          file crossplane | grep -q ELF || { echo "::error::crossplane download is not an ELF binary (got an error page?)"; head -c200 crossplane; exit 1; }
+          # integrity gate: the download must match the pinned digest. Subsumes the old
+          # ELF-sniff — it also rejects a CDN error page served as HTTP 200, and catches
+          # any artifact drift or tampering at the pinned version.
+          echo "${CRANK_SHA256}  crossplane" | sha256sum -c - || {
+            echo "::error::crossplane CLI checksum mismatch for ${CRANK_VERSION} (corrupt download or artifact drift)";
+            echo "got $(sha256sum crossplane | awk '{print $1}'), want ${CRANK_SHA256}"; head -c200 crossplane; exit 1;
+          }
           chmod +x crossplane
           ./crossplane version --client
           sudo mv crossplane /usr/local/bin/
       - name: render the Cluster examples against the composition
         # Under Crossplane v2 the namespaced Cluster IS the resource you apply — render
         # it directly (no claim/XR split). Catches schema/patch drift without a cluster.
-        # --crossplane-version pins the render-engine image: render otherwise defaults
-        # to "latest stable", which now resolves to the v1.20.x line (no `internal
-        # render` subcommand → "unexpected argument internal"). Pin it to the v2 line
-        # the CLI install above uses.
+        # --crossplane-version pins the render-engine image to the same v2 line as the
+        # CLI above: render otherwise defaults to "latest stable", which now resolves to
+        # the v1.20.x line (no `internal render` subcommand → "unexpected argument
+        # internal").
         run: |
           for ex in examples/*.yaml; do
             echo "::group::render $ex"
-            crossplane render "$ex" compositions/cluster-aws.yaml config/functions.yaml --crossplane-version v2.3.1
+            crossplane render "$ex" compositions/cluster-aws.yaml config/functions.yaml --crossplane-version "${CRANK_VERSION}"
             echo "::endgroup::"
           done
+      - name: render the observed-status fixture (gated bootstrap/Usage/write-back branches)
+        # The examples/ carry no status, so the loop above only ever renders the
+        # always-on cluster-stack Workspace — the status-gated blocks (the
+        # cluster-bootstrap Workspace, its teardown Usage, and the status write-back)
+        # never render, which is exactly the branch a missing/undeclared bootstrap var
+        # can hide in until a live vend. This fixture supplies a converged
+        # Cluster.status (lights the `{{ if $endpoint }}` branch) plus an observed
+        # cluster-stack Workspace carrying tofu outputs via --observed-resources (lights
+        # the `{{ if $csEndpoint }}` write-back), so every branch of the composition is
+        # exercised on each PR.
+        run: |
+          crossplane render tests/render/cluster-with-status.yaml \
+            compositions/cluster-aws.yaml config/functions.yaml \
+            --observed-resources tests/render/observed \
+            --crossplane-version "${CRANK_VERSION}"
 
   cel-tests:
     name: CEL admission tests

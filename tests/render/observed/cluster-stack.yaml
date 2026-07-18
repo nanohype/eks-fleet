@@ -1,0 +1,45 @@
+# Observed cluster-stack Workspace for the status-render fixture.
+#
+# Passed to `crossplane render` via --observed-resources (see the CI render job
+# and `task validate`). It mocks the state a converged cluster-stack Workspace
+# reports back: its tofu outputs under status.atProvider.outputs. The composition
+# reads $csEndpoint (= outputs.cluster_endpoint) to gate the status write-back
+# block, then copies each output into Cluster.status.
+#
+# Two metadata bits are load-bearing for `crossplane render`, not decoration:
+#   - annotations.crossplane.io/composition-resource-name: cluster-stack
+#       maps this mock to the composition's "cluster-stack" resource, so it lands
+#       in the template's `.observed.resources["cluster-stack"]`.
+#   - labels.crossplane.io/composite: development-platform
+#       associates it with the composite of that name (the fixture XR). Without
+#       this label `crossplane render` drops the observed resource on the floor —
+#       `.observed.resources` comes back empty and the write-back branch silently
+#       stays dark, defeating the fixture. It must equal the XR's metadata.name.
+apiVersion: opentofu.m.upbound.io/v1beta1
+kind: Workspace
+metadata:
+  name: development-platform-stack
+  namespace: platform
+  labels:
+    crossplane.io/composite: development-platform
+  annotations:
+    crossplane.io/composition-resource-name: cluster-stack
+    crossplane.io/external-name: development-platform
+spec:
+  forProvider:
+    source: Remote
+    entrypoint: fleet/aws/cluster-stack
+status:
+  atProvider:
+    outputs:
+      cluster_name: development-platform
+      cluster_endpoint: https://ABCDEF0123456789ABCDEF0123456789.gr7.us-west-2.eks.amazonaws.com
+      cluster_certificate_authority_data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t
+      cluster_security_group_id: sg-0123456789abcdef0
+      oidc_provider_arn: arn:aws:iam::111111111111:oidc-provider/oidc.eks.us-west-2.amazonaws.com/id/ABCDEF0123456789ABCDEF0123456789
+      oidc_issuer: oidc.eks.us-west-2.amazonaws.com/id/ABCDEF0123456789ABCDEF0123456789
+      karpenter_iam_role_arn: arn:aws:iam::111111111111:role/eks-fleet/development-platform-karpenter
+      vpc_id: vpc-0123456789abcdef0
+      private_subnet_ids: ["subnet-0aaa0aaa0aaa0aaa0", "subnet-0bbb0bbb0bbb0bbb0", "subnet-0ccc0ccc0ccc0ccc0"]
+      public_subnet_ids: ["subnet-0ddd0ddd0ddd0ddd0", "subnet-0eee0eee0eee0eee0", "subnet-0fff0fff0fff0fff0"]
+      private_subnet_az_ids: ["usw2-az1", "usw2-az2", "usw2-az3"]
