@@ -16,7 +16,7 @@ landing-zone SHA doesn't declare.
 | # | target | status |
 |---|---|---|
 | 27 | CRITICAL: fix the broken `moduleSource` pin | ✅ #17 |
-| 33 | State integrity + doc fixes | ☐ |
+| 33 | State integrity + doc fixes | ✅ #18 |
 
 ---
 
@@ -177,3 +177,53 @@ against a real per-region bucket or is rejected with a clear error, not a
 backend-init failure; both walkthrough docs' sample manifests admit cleanly as
 written; CEL negative tests run in CI and fail on a deliberately-broken
 manifest.
+
+**Outcome (✅ #18):** All five items shipped.
+
+1. **State-key namespacing.** Both Workspace `initArgs` now key on
+   `fleet/<namespace>/<name>/terraform.tfstate` (added `$ns` from
+   `metadata.namespace` to the template). Confirmed line numbers had shifted from
+   Target 27's edits (the cluster-bootstrap block grew with the
+   `data_kms_key_arn`/`gitops_repo_*` vars); edited the initArgs blocks by content,
+   not line. Proven: same-named `development-platform` rendered in `team-a` vs
+   `team-b` → `fleet/team-a/development-platform/...` vs `fleet/team-b/...`.
+
+2. **Locking.** Added `-backend-config=use_lockfile=true` to both blocks (S3-native,
+   tofu 1.10.8 that provider-opentofu v1.1.4 ships is past the >= 1.10 floor).
+   Reconciled the `config/bootstrap/README.md`-asserts vs `rung-1`-flags-unverified
+   contradiction — rung-1's "Backend locking" open item now states it as configured.
+
+3. **Region.** Chose **decouple** over constrain (less disruptive, and constraining
+   to one region defeats a multi-region fleet). Backend region is now the static
+   bucket region `us-west-2`, no longer `spec.region`, so any region validates
+   cleanly against the one real bucket instead of failing `tofu init`. Documented on
+   the XRD `region` field, `architecture.md`, `CLAUDE.md`. Proven: `spec.region:
+   us-east-1` render → backend region stays `us-west-2` (cluster still built in
+   us-east-1 via the `region` tofu var). No conflict with Target 27's XRD additions.
+
+4. **Docs.** Added `clusterName: eks` to the rung-1 (`rung1-cluster.yaml`) and
+   stand-up (`smoke.yaml`) samples (→ `development-eks`, matching each doc's
+   validation commands); added `clusterName` to `production-go-live.md`'s
+   required-fields list; rewrote its "fetches `landing-zone@main`" sentence to the
+   pinned-SHA design (given Target 27 just re-pinned it); removed the stray
+   `catalog/druid/chart/templates/` ignore from `.yamllint.yaml`. Also updated
+   `architecture.md` + the vend-failure runbook to the namespaced key / fixed region.
+   Note: the "tofu version-floor drift" the master row mentions was already
+   reconciled by Target 27 (all docs consistent at tofu >= 1.10.0 / provider v1.1.4
+   / tofu 1.10.8) — nothing left to fix there.
+
+5. **CEL negative tests.** No `kx`/kind validation harness existed for CEL (Target 27
+   added only the substrate-contract gate, which doesn't touch CEL). Built one:
+   `scripts/xrd-to-crd.py` lifts the XRD's exact `openAPIV3Schema` into a plain CRD
+   (byte-identical rules — Crossplane passes `x-kubernetes-validations` through
+   verbatim, so no Crossplane install is needed in CI), and
+   `scripts/cel-admission-test.sh` stands up a throwaway kind cluster, installs it,
+   and server-dry-run-applies fixtures — `tests/cel/reject/*.yaml` (6: public-empty
+   allowlist, adopt-missing-vpc, vendrole-without-boundary, name-doubling,
+   centralized-egress-no-tgw, ipam+literal-cidr) each must be denied with its
+   `# EXPECT:` message; `tests/cel/accept/*.yaml` + `examples/*.yaml` each must be
+   admitted. **Actually executed against a real kind cluster (k8s 1.35): 11/11
+   passed.** Negative control run: with the endpoint rule stripped from the derived
+   CRD, its reject fixture is admitted — so the harness fails on a real regression,
+   not just malformed YAML. Wired as `task cel-test` + a `helm/kind-action@v1.14.0`
+   CI job. `task validate` (yamllint + substrate contract + render) stays green.
