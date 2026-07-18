@@ -18,10 +18,20 @@ tasks:
     cmds:
       - crossplane render {{.EXAMPLE}} compositions/cluster-aws.yaml config/functions.yaml
 
+  contract:
+    desc: >-
+      Diff the composition's templated var keys against the pinned landing-zone
+      substrate (both entrypoints) + assert the XRD/composition pins are lockstep.
+      Set LANDING_ZONE_DIR to a local checkout to run offline; otherwise fetches
+      variables.tf from GitHub at the pinned SHA.
+    cmds:
+      - python3 scripts/check-substrate-contract.py
+
   validate:
-    desc: Lint + render the Cluster examples against the composition (no cluster needed)
+    desc: Lint + contract check + render the Cluster examples against the composition (no cluster needed)
     deps: [lint]
     cmds:
+      - task: contract
       - |
         for ex in examples/*.yaml; do
           echo "render $ex"

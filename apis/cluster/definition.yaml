@@ -88,6 +88,20 @@ spec:
                     EKS access entry so portal reaches this cluster's API (mint
                     tokens, watch tenants) with the same role it uses for
                     eks:DescribeCluster. Empty = portal not wired for this cluster.
+                dataKmsKeyArn:
+                  type: string
+                  default: ""
+                  description: >-
+                    The spoke's secrets-component data CMK ARN. The bootstrap
+                    Workspace's agent-iam module encrypts the model-artifacts +
+                    eval-reports buckets at rest with it (SSE-KMS). A spoke
+                    prerequisite referenced by ARN — like vendRoleArn and the
+                    permissions boundaries — not something the vend creates:
+                    cluster-stack provisions only network + cluster (no secrets
+                    module), so the order desk supplies the key the spoke's baseline
+                    already published to SSM (/platform/<env>/secrets/kms-key-arn).
+                    Empty = ungated local/hub validation, where no real
+                    artifacts bucket is minted.
                 ttlDays:
                   type: integer
                   default: 0
@@ -295,6 +309,21 @@ spec:
                     SSH URL of the private tenants GitOps repo. When set, the
                     bootstrap registers a read-only deploy key + ArgoCD repo
                     credential so ArgoCD can pull portal-committed tenant manifests.
+                gitopsRepoUrl:
+                  type: string
+                  default: "https://github.com/nanohype/eks-gitops.git"
+                  description: >-
+                    Git URL of the addon-catalog GitOps repo the spoke's app-of-apps
+                    points at — this org's eks-gitops (or a fork of it). Defaults to
+                    the org catalog; override only to vend against a fork. Required
+                    non-empty and validated as a git URL by the substrate, so it is
+                    always sent (unlike tenantsRepoUrl, which is optional).
+                gitopsRepoBranch:
+                  type: string
+                  default: "main"
+                  description: >-
+                    Branch of the addon-catalog GitOps repo the spoke tracks.
+                    Defaults to main.
                 # --- the substrate the Workspace runs ------------------------
                 moduleSource:
                   type: string
@@ -304,7 +333,7 @@ spec:
                   # bump). Keep in lockstep with the same default in
                   # compositions/cluster-aws.yaml; bump both to roll the substrate
                   # forward (the SHA is a landing-zone main commit).
-                  default: "git::https://github.com/nanohype/landing-zone.git?ref=1ae86ccd49d8d2bc803786249a327f66a41cb762"
+                  default: "git::https://github.com/nanohype/landing-zone.git?ref=9243a18005f92fb932a766537bb88c5becfeb759"
                   description: >-
                     Git source for the landing-zone repo the Workspace fetches; tofu runs
                     in the fleet/aws/cluster-stack subdir (set by the composition's
