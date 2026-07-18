@@ -152,13 +152,128 @@ spec:
                 network:
                   type: object
                   # Default the whole object: a default on a nested field alone doesn't
-                  # apply when `network` is omitted, which would pass an empty vpc_cidr.
-                  default: {vpcCidr: "10.0.0.0/16", maxAzs: 3, natGateways: 1}
-                  description: The VPC the cluster lands in — provisioned first by the composition.
+                  # apply when `network` is omitted, which would leave `mode` unset and the
+                  # create sub-object empty, passing an empty vpc_cidr to tofu (same
+                  # whole-object-default reason as systemNodes above).
+                  default: {mode: create, create: {vpcCidr: "10.0.0.0/16", maxAzs: 3, natGateways: 1}}
+                  description: >-
+                    The VPC the cluster lands in. mode: create (default) provisions a
+                    self-owned VPC first; mode: adopt participates in a VPC provisioned
+                    elsewhere (a same-account shared VPC, or one shared cross-account via
+                    AWS RAM), referencing it by ID. Populate the sub-object matching mode.
                   properties:
-                    vpcCidr: {type: string, default: "10.0.0.0/16"}
-                    maxAzs: {type: integer, default: 3}
-                    natGateways: {type: integer, default: 1}
+                    mode:
+                      type: string
+                      enum: [create, adopt]
+                      default: create
+                      description: >-
+                        create — the stack owns a disposable VPC (subnets, endpoints,
+                        egress, and the ELB role tags). adopt — the stack participates in
+                        a VPC it does not own; the owner runs the VPC and the subnet
+                        tagging, and the cluster references it by adopt.* IDs.
+                    create:
+                      type: object
+                      # Whole-object default (like network / systemNodes): a default on a
+                      # nested field alone doesn't apply when create is omitted, which
+                      # would pass an empty vpc_cidr to tofu.
+                      default: {vpcCidr: "10.0.0.0/16", maxAzs: 3, natGateways: 1}
+                      description: Create-mode inputs — used when mode is create.
+                      properties:
+                        vpcCidr:
+                          type: string
+                          default: "10.0.0.0/16"
+                          description: CIDR for the VPC (literal allocation). Mutually exclusive with ipamPoolId.
+                        ipamPoolId:
+                          type: string
+                          default: ""
+                          description: >-
+                            IPAM pool the VPC CIDR is drawn from. Empty (default) = literal
+                            allocation from vpcCidr. Cross-account this is the org IPAM env
+                            sub-pool shared in over RAM.
+                        ipamNetmaskLength:
+                          type: integer
+                          default: 0
+                          description: >-
+                            Netmask length of the CIDR to allocate from ipamPoolId (16-20;
+                            subnets are carved 8 bits smaller than the VPC block, so a base
+                            longer than /20 would drop below AWS's /28 minimum). 0 (default)
+                            = literal allocation.
+                        transitGatewayId:
+                          type: string
+                          default: ""
+                          description: >-
+                            Transit gateway the VPC attaches to. Empty (default) = local NAT
+                            egress only. Requires an IPAM-allocated CIDR (set ipamPoolId), so
+                            attached prefixes stay non-overlapping.
+                        centralizedEgress:
+                          type: boolean
+                          default: false
+                          description: >-
+                            Route private egress through the transit gateway instead of a
+                            local NAT gateway (zero NAT gateways). Requires transitGatewayId.
+                        maxAzs:
+                          type: integer
+                          default: 3
+                        natGateways:
+                          type: integer
+                          default: 1
+                    adopt:
+                      type: object
+                      # Whole-object default so an adopt spec that omits the object still
+                      # coerces cleanly; the CEL rules below require vpcId + subnetIds.private
+                      # to be non-empty whenever mode is adopt.
+                      default: {vpcId: "", subnetIds: {private: [], public: []}}
+                      description: Adopt-mode inputs — used when mode is adopt.
+                      properties:
+                        vpcId:
+                          type: string
+                          default: ""
+                          description: VPC ID to adopt. Required (non-empty) when mode is adopt.
+                        subnetIds:
+                          type: object
+                          default: {private: [], public: []}
+                          description: Subnet IDs in the adopted VPC.
+                          properties:
+                            private:
+                              type: array
+                              items: {type: string}
+                              default: []
+                              description: Private subnet IDs (required, non-empty, when mode is adopt).
+                            public:
+                              type: array
+                              items: {type: string}
+                              default: []
+                              description: Public subnet IDs (empty is valid for a private-only cluster).
+                  x-kubernetes-validations:
+                    # adopt mode must reference a concrete VPC + at least one private
+                    # subnet — mirrors landing-zone network's adopt_vpc_id /
+                    # adopt_private_subnet_ids preconditions, enforced here at admission
+                    # instead of at tofu plan (~20 min into the vend).
+                    - rule: >-
+                        self.mode != 'adopt' ||
+                        (has(self.adopt) && self.adopt.vpcId != '' &&
+                        has(self.adopt.subnetIds) && has(self.adopt.subnetIds.private) &&
+                        self.adopt.subnetIds.private.size() > 0)
+                      message: "network.mode: adopt requires network.adopt.vpcId and a non-empty network.adopt.subnetIds.private"
+                    # centralized egress needs a transit gateway to route the default
+                    # route to — mirrors landing-zone network's centralized_egress
+                    # precondition.
+                    - rule: >-
+                        !has(self.create) || !has(self.create.centralizedEgress) ||
+                        !self.create.centralizedEgress ||
+                        (has(self.create.transitGatewayId) && self.create.transitGatewayId != '')
+                      message: "network.create.centralizedEgress requires network.create.transitGatewayId"
+                    # a VPC CIDR comes from exactly one source: an IPAM pool OR a literal
+                    # vpcCidr, never both — mirrors landing-zone network's ipam_pool_id /
+                    # vpc_cidr mutual-exclusion precondition.
+                    - rule: >-
+                        !has(self.create) || !has(self.create.ipamPoolId) ||
+                        self.create.ipamPoolId == '' ||
+                        !has(self.create.vpcCidr) || self.create.vpcCidr == '10.0.0.0/16'
+                      message: >-
+                        network.create.ipamPoolId and a non-default network.create.vpcCidr
+                        are mutually exclusive — with an IPAM pool the CIDR is drawn from
+                        the pool, so leave vpcCidr at its default
                 # --- bootstrap (the second, post-Ready Workspace) ------------
                 enableAgentPlatform:
                   type: boolean
@@ -235,6 +350,33 @@ spec:
                 oidcIssuer: {type: string, description: OIDC issuer URL (no scheme).}
                 karpenterIamRoleArn: {type: string}
                 vpcId: {type: string}
+                privateSubnetIds:
+                  type: array
+                  items: {type: string}
+                  description: >-
+                    Private subnet IDs of the cluster's VPC (cluster-stack's
+                    private_subnet_ids output). cluster-bootstrap republishes them in
+                    adopt mode (Secret annotation + ConfigMap CSV) so a participant that
+                    can't discover subnets by owner tag still schedules nodes and places
+                    internal load balancers correctly.
+                publicSubnetIds:
+                  type: array
+                  items: {type: string}
+                  description: >-
+                    Public subnet IDs of the cluster's VPC (cluster-stack's
+                    public_subnet_ids output). cluster-bootstrap republishes them in adopt
+                    mode so scheme-aware injection places internet-facing load balancers
+                    on public subnets.
+                subnetAzIds:
+                  type: array
+                  items: {type: string}
+                  description: >-
+                    AWS AZ IDs (e.g. usw2-az1) of the cluster's private subnets, in
+                    privateSubnetIds order (cluster-stack's private_subnet_az_ids output).
+                    AZ IDs, not AZ names — a name like us-west-2a maps to a different
+                    physical zone per account, so it isn't meaningful across the account
+                    boundary an adopted/shared subnet crosses; the AZ ID is the stable
+                    cross-account identifier.
       additionalPrinterColumns:
         - name: REGION
           type: string

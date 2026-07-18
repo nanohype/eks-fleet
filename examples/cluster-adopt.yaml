@@ -1,0 +1,52 @@
+# Vend a cluster into a VPC it does NOT own — adopt mode. Here the VPC + subnets
+# live in a central network account and are shared cross-account into the workload
+# account over AWS RAM; the vend (running as the workload account's fleet-vend role)
+# builds only the EKS cluster + nodes and participates in the shared subnets by ID.
+# A participant can't tag a foreign-owned subnet, so the network owner runs the
+# subnet tagging; cluster-bootstrap republishes the subnet IDs onto the in-cluster
+# ArgoCD Secret + kube-system/network-config ConfigMap so Karpenter and the load
+# balancer controller can select subnets by ID instead of by owner tag.
+# The subnet/VPC IDs below are placeholders — swap in the real shared IDs.
+# Also a CI render target: exercises network_mode=adopt + the JSON-encoded adopt vars.
+apiVersion: fleet.nanohype.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: staging-shared
+  namespace: platform
+spec:
+  account: "222222222222"
+  region: us-west-2
+  environment: staging
+  # Cluster base name; the EKS cluster becomes <environment>-<clusterName>
+  # (staging-shared). Required, unique per (account, region, environment), and
+  # must not equal environment.
+  clusterName: shared
+  team: platform
+  # cross-account: assume the workload account's fleet-vend role to provision, and
+  # grant the hub's Crossplane role a cluster-admin access entry for the bootstrap.
+  vendRoleArn: "arn:aws:iam::222222222222:role/staging-eks-fleet-vend"
+  bootstrapAccessRoleArn: "arn:aws:iam::111111111111:role/eks-fleet-crossplane"
+  # the vend role's boundary (SSM /eks-fleet/staging/fleet-vend/
+  # vend_permissions_boundary_arn); the XRD rejects a vendRoleArn without both.
+  clusterPermissionsBoundaryArn: "arn:aws:iam::222222222222:policy/eks-fleet/staging-eks-fleet-vend-boundary"
+  operatorPermissionsBoundaryArn: "arn:aws:iam::222222222222:policy/eks-fleet/staging-eks-fleet-vend-boundary"
+  systemNodes:
+    instanceTypes: ["m7g.xlarge", "m6g.xlarge"]
+    minSize: 2
+    maxSize: 6
+    desiredSize: 2
+  # adopt mode: reference the RAM-shared VPC + subnets by ID. No create-mode levers
+  # (vpcCidr / IPAM / transit gateway / egress) — the network owner runs all of that.
+  network:
+    mode: adopt
+    adopt:
+      vpcId: vpc-0adopted00000001
+      subnetIds:
+        private:
+          - subnet-0adopted0private01
+          - subnet-0adopted0private02
+          - subnet-0adopted0private03
+        public:
+          - subnet-0adopted0public001
+          - subnet-0adopted0public002
+          - subnet-0adopted0public003

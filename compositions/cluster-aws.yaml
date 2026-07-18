@@ -41,6 +41,13 @@ spec:
             {{- $spec := $xr.spec }}
             {{- $name := $xr.metadata.name }}
             {{- $net := $spec.network | default dict }}
+            {{- /* network is discriminated on mode: create reads $create, adopt reads */}}
+            {{- /* $adopt. Both sub-objects default to empty here, so a spec that fills */}}
+            {{- /* only its mode's side leaves the other's vars at their tofu defaults. */}}
+            {{- $mode := dig "mode" "create" $net }}
+            {{- $create := dig "create" dict $net }}
+            {{- $adopt := dig "adopt" dict $net }}
+            {{- $adoptSubnets := dig "subnetIds" dict $adopt }}
             {{- $sys := $spec.systemNodes | default dict }}
             {{- /* Pinned landing-zone SHA (not ?ref=main): provider-opentofu caches by ref */}}
             {{- /* + never re-pulls, so a moving ref is non-reproducible. Lockstep with the */}}
@@ -86,7 +93,23 @@ spec:
                   - {key: team, value: {{ $spec.team | quote }}}
                   - {key: cluster_name, value: {{ $spec.clusterName | quote }}}
                   - {key: cluster_version, value: {{ dig "clusterVersion" "1.36" $spec | quote }}}
-                  - {key: vpc_cidr, value: {{ dig "vpcCidr" "10.0.0.0/16" $net | quote }}}
+                  # network: mode selects which side is live. create levers (vpc_cidr, IPAM,
+                  # TGW, centralized egress, AZ/NAT counts) read from $create; adopt IDs from
+                  # $adopt. The network component's cross-mode preconditions reject a value
+                  # from the wrong side, so the inactive side must stay at its tofu default —
+                  # which it does, because the XRD defaults the unused sub-object empty and a
+                  # spec never populates the other mode's fields.
+                  - {key: network_mode, value: {{ $mode | quote }}}
+                  - {key: vpc_cidr, value: {{ dig "vpcCidr" "10.0.0.0/16" $create | quote }}}
+                  - {key: ipam_pool_id, value: {{ dig "ipamPoolId" "" $create | quote }}}
+                  - {key: ipam_netmask_length, value: {{ dig "ipamNetmaskLength" 0 $create | quote }}}
+                  - {key: transit_gateway_id, value: {{ dig "transitGatewayId" "" $create | quote }}}
+                  - {key: centralized_egress, value: {{ dig "centralizedEgress" false $create | quote }}}
+                  # adopt-mode subnet references — JSON-encoded lists (tofu parses ["a","b"]
+                  # as a real list(string)). Empty in create mode; the adopt_* vars default [].
+                  - {key: adopt_vpc_id, value: {{ dig "vpcId" "" $adopt | quote }}}
+                  - {key: adopt_private_subnet_ids, value: {{ dig "private" (list) $adoptSubnets | toJson | quote }}}
+                  - {key: adopt_public_subnet_ids, value: {{ dig "public" (list) $adoptSubnets | toJson | quote }}}
                   - {key: assume_role_arn, value: {{ dig "vendRoleArn" "" $spec | quote }}}
                   # path-gated under /eks-fleet/ for every hub vend (hub role same-account, fleet-vend cross-account)
                   - {key: cluster_iam_role_path, value: "/eks-fleet/"}
@@ -98,8 +121,8 @@ spec:
                   # vendRoleArn. Empty = ungated (the local kind hub on user creds).
                   - {key: cluster_permissions_boundary_arn, value: {{ dig "clusterPermissionsBoundaryArn" "" $spec | quote }}}
                   - {key: cluster_endpoint_public_access, value: {{ dig "endpointPublicAccess" false $spec | quote }}}
-                  - {key: max_azs, value: {{ dig "maxAzs" 3 $net | quote }}}
-                  - {key: nat_gateways, value: {{ dig "natGateways" 1 $net | quote }}}
+                  - {key: max_azs, value: {{ dig "maxAzs" 3 $create | quote }}}
+                  - {key: nat_gateways, value: {{ dig "natGateways" 1 $create | quote }}}
                   - {key: system_node_min_size, value: {{ dig "minSize" 2 $sys | quote }}}
                   - {key: system_node_max_size, value: {{ dig "maxSize" 6 $sys | quote }}}
                   - {key: system_node_desired_size, value: {{ dig "desiredSize" 2 $sys | quote }}}
@@ -151,6 +174,16 @@ spec:
                   - {key: oidc_provider_arn, value: {{ dig "oidcProviderArn" "" $st | quote }}}
                   - {key: oidc_issuer, value: {{ dig "oidcIssuer" "" $st | quote }}}
                   - {key: vpc_id, value: {{ dig "vpcId" "" $st | quote }}}
+                  # network topology for the in-cluster ArgoCD Secret + kube-system/network-config
+                  # ConfigMap: network_mode is the spec's mode (a deterministic input); the subnet
+                  # lists ride the durable status (cluster-stack outputs, written back below), so
+                  # they're always populated by the time this Workspace renders. cluster-bootstrap
+                  # publishes them only in adopt mode (a create-mode cluster discovers subnets by
+                  # the ELB role tags it stamps), so create-mode subnets are passed through and
+                  # correctly dropped there.
+                  - {key: network_mode, value: {{ $mode | quote }}}
+                  - {key: private_subnet_ids, value: {{ dig "privateSubnetIds" (list) $st | toJson | quote }}}
+                  - {key: public_subnet_ids, value: {{ dig "publicSubnetIds" (list) $st | toJson | quote }}}
                   # same fleet-role boundary as cluster-stack's cluster_permissions_boundary_arn:
                   # the agent-platform operator role must carry the ceiling of the fleet role
                   # minting it, or the IAM gate rejects the CreateRole.
@@ -207,6 +240,13 @@ spec:
               oidcIssuer: {{ dig "oidc_issuer" "" $csOut | quote }}
               karpenterIamRoleArn: {{ dig "karpenter_iam_role_arn" "" $csOut | quote }}
               vpcId: {{ dig "vpc_id" "" $csOut | quote }}
+              # list-typed outputs: provider-opentofu stores each output as raw JSON, which
+              # function-go-templating decodes to a native slice — so these render through
+              # toJson (a real YAML array), not quote. subnetAzIds carries the private
+              # subnets' AZ *IDs* (cross-account-stable), never the account-local AZ names.
+              privateSubnetIds: {{ dig "private_subnet_ids" (list) $csOut | toJson }}
+              publicSubnetIds: {{ dig "public_subnet_ids" (list) $csOut | toJson }}
+              subnetAzIds: {{ dig "private_subnet_az_ids" (list) $csOut | toJson }}
             {{- end }}
     - step: ready
       functionRef:
