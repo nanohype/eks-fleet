@@ -1,0 +1,57 @@
+# Render fixture: a Cluster that already carries a converged status, so
+# `crossplane render` exercises the composition's *gated* template branches.
+#
+# The plain examples/ render only the always-on cluster-stack Workspace: they
+# carry no status, so `crossplane render` never enters the composition's
+# status-gated blocks — the cluster-bootstrap Workspace + its teardown Usage
+# ({{- if $endpoint }}) and the status write-back ({{- if $csEndpoint }}). That
+# is exactly the dark branch where a missing/undeclared bootstrap var can hide
+# and never surface until a live vend. This fixture lights it up in CI:
+#
+#   - status.clusterEndpoint (below) makes $endpoint non-empty -> the bootstrap
+#     Workspace + Usage render, and every bootstrap var reads its value from this
+#     durable status.
+#   - the observed cluster-stack Workspace (tests/render/observed/cluster-stack.yaml,
+#     passed via --observed-resources) makes $csEndpoint non-empty -> the status
+#     write-back block renders.
+#
+# It is a copy of examples/cluster-development.yaml with a synthetic (fake, but
+# shape-accurate) status appended. Values are placeholders — the point is the
+# template paths, not the data.
+apiVersion: fleet.nanohype.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: development-platform
+  namespace: platform
+spec:
+  account: "111111111111"
+  region: us-west-2
+  environment: development
+  clusterName: platform
+  team: platform
+  clusterPermissionsBoundaryArn: "arn:aws:iam::111111111111:policy/eks-fleet/eks-fleet-hub-boundary"
+  operatorPermissionsBoundaryArn: "arn:aws:iam::111111111111:policy/eks-fleet/eks-fleet-hub-boundary"
+  clusterVersion: "1.35"
+  systemNodes:
+    instanceTypes: ["m7g.xlarge"]
+    minSize: 2
+    maxSize: 6
+    desiredSize: 2
+  network:
+    mode: create
+    create:
+      vpcCidr: "10.0.0.0/16"
+      natGateways: 1
+# Synthetic converged status: the composition reads the bootstrap Workspace's
+# cluster-identity vars from here (the durable XR status), so it must be populated
+# for that branch to render with non-empty vars.
+status:
+  clusterName: development-platform
+  clusterEndpoint: https://ABCDEF0123456789ABCDEF0123456789.gr7.us-west-2.eks.amazonaws.com
+  certificateAuthorityData: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t
+  clusterSecurityGroupId: sg-0123456789abcdef0
+  oidcProviderArn: arn:aws:iam::111111111111:oidc-provider/oidc.eks.us-west-2.amazonaws.com/id/ABCDEF0123456789ABCDEF0123456789
+  oidcIssuer: oidc.eks.us-west-2.amazonaws.com/id/ABCDEF0123456789ABCDEF0123456789
+  vpcId: vpc-0123456789abcdef0
+  privateSubnetIds: ["subnet-0aaa0aaa0aaa0aaa0", "subnet-0bbb0bbb0bbb0bbb0", "subnet-0ccc0ccc0ccc0ccc0"]
+  publicSubnetIds: ["subnet-0ddd0ddd0ddd0ddd0", "subnet-0eee0eee0eee0eee0", "subnet-0fff0fff0fff0fff0"]

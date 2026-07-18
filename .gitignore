@@ -13,6 +13,11 @@
 *secret*.json
 !*secret*-store*.yaml
 !*secret*-store*.yml
+# Committed shape-only templates (placeholders, never real keys) — the *secret*.yaml
+# rule above otherwise swallows them. Real filled copies drop the `.example` and stay
+# ignored. Mirrors the org's `!.env.example` convention.
+!*.secret.example.yaml
+!*.secret.example.yml
 
 # IAM roles / sensitive AWS config
 *role-trust-policy*.json

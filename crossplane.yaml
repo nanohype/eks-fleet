@@ -16,6 +16,11 @@ spec:
   crossplane:
     version: ">=v2.0.0-0"
   dependsOn:
+    # >=v1.1.0 is load-bearing, not arbitrary: the composition's Workspace initArgs
+    # set the S3-native `-backend-config=use_lockfile=true` backend, which needs the
+    # runtime to ship OpenTofu >= 1.10. v1.1.0 is the release that bumped the bundled
+    # tofu to 1.10.8 (the deployed pin in config/*/providers.yaml is v1.1.4, also
+    # 1.10.8). Don't lower this below the tofu-1.10 line or state locking breaks.
     - provider: xpkg.upbound.io/upbound/provider-opentofu
       version: ">=v1.1.0"
     - function: xpkg.upbound.io/crossplane-contrib/function-go-templating
