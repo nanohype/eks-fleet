@@ -76,7 +76,7 @@ inputs (which wrap `landing-zone/components/aws/{network,cluster}`) field-for-fi
 | `region` | `region` | `clusterEndpoint` | `cluster_endpoint` |
 | `clusterVersion` | `cluster_version` | `certificateAuthorityData` | `cluster_certificate_authority_data` |
 | `systemNodes.*` | `system_node_*` | `oidcProviderArn` | `oidc_provider_arn` |
-| `network.vpcCidr` | (network) `vpc_cidr` | `oidcIssuer` | `oidc_issuer` |
+| `network.mode` + `create.*`/`adopt.*` | (network) `network_mode`, `vpc_cidr`, `adopt_*` | `oidcIssuer` | `oidc_issuer` |
 | `vendRoleArn` | `assume_role_arn` | `karpenterIamRoleArn` | `karpenter_iam_role_arn` |
 | `clusterPermissionsBoundaryArn` | `cluster_permissions_boundary_arn` | `vpcId` | `vpc_id` |
 | `operatorPermissionsBoundaryArn` | (bootstrap) `operator_permissions_boundary_arn` | | |
@@ -213,14 +213,17 @@ necessity. That's the only multi-Workspace shape this decision allows.
 
 **How the vars are rendered:** a `function-go-templating` step templates every spec
 field onto the Workspace as a `{key, value}` var — the scalars (`region`, `environment`,
-`team`, `cluster_name`, `cluster_version`, `vpc_cidr`, `vendRoleArn → assume_role_arn`,
-`endpointPublicAccess`, `network.maxAzs`, `network.natGateways`, and
-`systemNodes.{minSize,maxSize,desiredSize,diskSize}`) as quoted strings (tofu coerces
-bool/number from the string value), and the two **list-typed** fields —
-`endpointPublicAccessCidrs` and `systemNodes.instanceTypes` — as JSON via `toJson | quote`.
+`team`, `cluster_name`, `cluster_version`, `vendRoleArn → assume_role_arn`,
+`endpointPublicAccess`, the create-mode `network.create.{vpcCidr,ipamPoolId,transitGatewayId,centralizedEgress,maxAzs,natGateways}`,
+`network.mode`, and `systemNodes.{minSize,maxSize,desiredSize,diskSize}`) as quoted strings
+(tofu coerces bool/number from the string value), and the list-typed fields —
+`endpointPublicAccessCidrs`, `systemNodes.instanceTypes`, and the adopt-mode
+`network.adopt.subnetIds.{private,public}` — as JSON via `toJson | quote`.
 provider-opentofu passes vars as `-var=key=value` flags, and tofu parses a `-var` value
 of `["a","b"]` as a real `list(string)`, so the JSON encoding round-trips — which is how
-the security-relevant `endpointPublicAccessCidrs` allowlist reaches the cluster. The API
+the security-relevant `endpointPublicAccessCidrs` allowlist reaches the cluster. `network`
+is discriminated on `mode`: create reads the `create` sub-object (a self-owned VPC), adopt
+reads the `adopt` sub-object (a VPC shared in, same-account or cross-account via RAM). The API
 endpoint is private by default (`endpointPublicAccess: false`); public access is explicit
 opt-in, and a CEL rule on the XRD's spec rejects a public endpoint with an empty allowlist
 — so the cluster module's empty-list → `["0.0.0.0/0"]` fallback never fires on a vended

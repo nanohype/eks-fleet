@@ -30,6 +30,11 @@ spec:
     minSize: 2
     maxSize: 6
     desiredSize: 2
+  # create mode (the default): the stack owns a disposable VPC. Omit `network`
+  # entirely to take the defaults (10.0.0.0/16, 3 AZs, 1 NAT gateway); shown here
+  # to set a single shared NAT gateway explicitly.
   network:
-    vpcCidr: "10.0.0.0/16"
-    natGateways: 1
+    mode: create
+    create:
+      vpcCidr: "10.0.0.0/16"
+      natGateways: 1

@@ -43,7 +43,10 @@ spec:
     maxSize: 9
     desiredSize: 3
     diskSize: 120
+  # create mode: a self-owned production VPC with per-AZ NAT (3 gateways for HA).
   network:
-    vpcCidr: "10.4.0.0/16"
-    maxAzs: 3
-    natGateways: 3
+    mode: create
+    create:
+      vpcCidr: "10.4.0.0/16"
+      maxAzs: 3
+      natGateways: 3
