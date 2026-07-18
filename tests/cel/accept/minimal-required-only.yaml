@@ -1,0 +1,14 @@
+# The bare-minimum valid Cluster: only the required fields. Everything else takes an
+# XRD default (private endpoint, create-mode 10.0.0.0/16 VPC, Graviton system nodes).
+# Must be admitted — proves the defaults themselves don't trip any CEL rule.
+apiVersion: fleet.nanohype.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: accept-minimal
+  namespace: platform
+spec:
+  account: "111111111111"
+  region: us-west-2
+  environment: development
+  clusterName: eks
+  team: platform

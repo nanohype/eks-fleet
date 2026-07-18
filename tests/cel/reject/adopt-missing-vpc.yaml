@@ -1,0 +1,18 @@
+# adopt mode must reference a concrete VPC + at least one private subnet. With the
+# adopt sub-object left to default (vpcId "", private []), the XRD's CEL rule must
+# reject it at admission rather than fail ~20 min into tofu plan.
+# EXPECT: network.mode: adopt requires network.adopt.vpcId and a non-empty network.adopt.subnetIds.private
+apiVersion: fleet.nanohype.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: reject-adopt-no-vpc
+  namespace: platform
+spec:
+  account: "111111111111"
+  region: us-west-2
+  environment: development
+  clusterName: eks
+  team: platform
+  network:
+    mode: adopt
+    # adopt sub-object omitted -> defaults to empty vpcId + empty private subnets

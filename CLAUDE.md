@@ -82,7 +82,10 @@ pod as a shared credentials file (`AWS_SHARED_CREDENTIALS_FILE`,
   `Cluster` status stays fresh as the Workspace converges.
 - State is not persisted in-pod → every Workspace uses the S3 backend. The
   per-cluster state key rides on the Workspace `initArgs`
-  (`-backend-config=key=fleet/<name>/terraform.tfstate` + region), which complete
+  (`-backend-config=key=fleet/<namespace>/<name>/terraform.tfstate` — namespaced
+  because a `Cluster` name is unique only within its namespace), plus the static
+  bucket, `region=us-west-2` (the state bucket's region, **not** `spec.region`),
+  `use_lockfile=true` (S3-native locking), and `encrypt=true` — which complete
   the entrypoint's partial `backend "s3" {}` block.
 - Use `https://` git sources, not SSH (no key in the Workspace pod).
 - The kubeconfig connection secret lands in the `Cluster`'s namespace (namespaced

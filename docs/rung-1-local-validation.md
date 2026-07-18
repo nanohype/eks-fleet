@@ -109,6 +109,9 @@ spec:
   account: "111111111111"  # your management account
   region: us-west-2
   environment: development
+  # required base name; the EKS cluster becomes <environment>-<clusterName>
+  # (development-eks), which the §8 validation commands below reference.
+  clusterName: eks
   team: platform
   # vendRoleArn omitted -> same-account, uses the hub's creds
   # ttlDays: 1   # tags the spoke Lifecycle=ephemeral + Expiry; the reaper would
@@ -175,9 +178,11 @@ modules the e2e tore down cleanly), the e2e harness's reaping logic in
   the AWS SDK, so the local runtime config mounts the `aws-creds` Secret and sets
   `AWS_SHARED_CREDENTIALS_FILE` (the ProviderConfig is `source: None`). This is wired in
   `config/local/`; the Secret must exist before the provider pod starts (step 3).
-- **Backend locking** — confirm the S3 backend init succeeds with native locking;
-  if it wants a lock table, add `-backend-config=use_lockfile=true` to the
-  Workspace's `initArgs`.
+- **Backend locking (configured)** — the Workspace `initArgs` carry
+  `-backend-config=use_lockfile=true`, so the S3 backend locks S3-natively (a lock
+  file in the state bucket, no DynamoDB table) — provider-opentofu v1.1.4 ships
+  tofu 1.10.8, past the >= 1.10 floor `use_lockfile` needs. Confirm `tofu init`
+  succeeds and a concurrent apply is blocked, not silently racing.
 - **SSO expiry** — if the session expires mid-build, refresh it and recreate the
   `aws-creds` Secret; provider-opentofu picks it up on the next reconcile.
 - **Outputs → status** — confirm the composition's status write-back populates the

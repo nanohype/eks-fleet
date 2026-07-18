@@ -1,0 +1,19 @@
+# Centralized egress routes the default route through a transit gateway; without a
+# transitGatewayId there is nothing to route to. The XRD's CEL rule must reject it.
+# EXPECT: network.create.centralizedEgress requires network.create.transitGatewayId
+apiVersion: fleet.nanohype.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: reject-egress-no-tgw
+  namespace: platform
+spec:
+  account: "111111111111"
+  region: us-west-2
+  environment: development
+  clusterName: eks
+  team: platform
+  network:
+    mode: create
+    create:
+      centralizedEgress: true
+      # transitGatewayId omitted -> nothing to route the default route to -> rejected

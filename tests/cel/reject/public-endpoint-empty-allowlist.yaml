@@ -1,0 +1,16 @@
+# A public API endpoint with no CIDR allowlist reaches the cluster module as
+# ["0.0.0.0/0"] (open to the world). The XRD's CEL rule must reject it at admission.
+# EXPECT: endpointPublicAccess: true requires a non-empty endpointPublicAccessCidrs allowlist
+apiVersion: fleet.nanohype.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: reject-public-empty
+  namespace: platform
+spec:
+  account: "111111111111"
+  region: us-west-2
+  environment: development
+  clusterName: eks
+  team: platform
+  endpointPublicAccess: true
+  # endpointPublicAccessCidrs omitted -> defaults to [] -> must be rejected
