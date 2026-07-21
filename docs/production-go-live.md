@@ -78,17 +78,26 @@ Goal: Cilium + ArgoCD + the addon catalog (incl. the eks-agent-platform operator
 
 ## Stage 4 — Tenant go-live
 
-Goal: the four tenant apps live on the cluster — `competitive-intelligence`, `slack-knowledge-bot`, `digest-pipeline`, `incident-response`. Per tenant, per environment:
+Goal: the four tenant apps live on the cluster — `competitive-intelligence`, `slack-knowledge-bot`, `digest-pipeline`, `incident-response`. Each app is owned by a team, and the two tokens do different jobs:
 
-1. **Provision per-tenant infra:** `terragrunt apply` the tenant's landing-zone component (Aurora / DynamoDB / SQS / S3 / KMS + the IRSA role). Capture `terragrunt output -json`.
-2. **Apply the Platform CR** once per cluster: `kubectl apply -f <tenant>/platform.yaml` (the Platform + BudgetPolicy CRs live in the team namespace `tenants-protohype`) — the operator then provisions the per-tenant workload namespace `tenants-<tenant>`, its ResourceQuota, NetworkPolicy, AppProject (named `<tenant>`), and the tenant IRSA. `kubectl wait --for=condition=Ready platform.nanohype.dev/<tenant> -n tenants-protohype --timeout=10m`.
-3. **Seed external secrets** in AWS Secrets Manager (External Secrets Operator must be installed — it provides the `aws-secrets-manager` ClusterSecretStore). Per tenant: `competitive-intelligence` → Slack (3 tokens); `slack-knowledge-bot` → Slack + WorkOS + Notion + Confluence + Google + a state signing secret (**all** OAuth pairs must exist even if unused, or the ExternalSecret won't sync); `digest-pipeline` → approvers + WorkOS directory + DB credentials; `incident-response` → the Grafana OnCall webhook HMAC secret.
-4. **Fill chart values** in `<tenant>/chart/values-<env>.yaml`: `aws.platformRoleArn` = the `irsa_role_arn` output, plus the per-tenant `tenantInfra.*` keys (pg/aurora endpoints, DynamoDB tables, SQS URLs — FIFO `.fifo` suffixes must match outputs exactly, KMS key id, buckets). Commit + push.
-5. **Register the ApplicationSet** entries in eks-gitops (one per tenant; matrix generator `clusters × list`, valueFiles `values.yaml` + `values-<env>.yaml`, destination `tenants-<tenant>`). ArgoCD reconciles.
+| app (`<app>` — the `Platform.metadata.name`) | owning team (`<team>` — the `Platform.spec.tenant`) |
+|---|---|
+| `competitive-intelligence` | `strategy` |
+| `digest-pipeline` | `growth` |
+| `incident-response` | `reliability` |
+| `slack-knowledge-bot` | `workplace` |
+
+`<team>` says who owns the app: it points at a cluster-scoped `Tenant` CR and feeds labels, IAM tags and OTel attributes. `<app>` is what the operator actually builds from. Per app, per environment:
+
+1. **Provision per-app infra:** `terragrunt apply` the app's landing-zone component (Aurora / DynamoDB / SQS / S3 / KMS + the app-access managed policy). Capture `terragrunt output -json`. The component's Pod Identity association half resolves the operator-minted tenant role by name, so it only converges once step 2 has run — re-apply after the Platform CR is Ready.
+2. **Apply the Platform CR** once per cluster: `kubectl apply -f <app>/platform.yaml`. The Platform + BudgetPolicy CRs are namespaced into the owning team's namespace, `tenants-<team>` (`tenants-strategy`, `tenants-growth`, `tenants-reliability`, `tenants-workplace`) — create it if it isn't there, and make sure the cluster-scoped `Tenant` CR named by `spec.tenant` exists, or `cloudgov platform audit` flags a dangling reference. Everything the operator provisions keys off `<app>`, not `<team>`: the **workload namespace `tenants-<app>`** (a different namespace from the one holding the CR), its ResourceQuota, LimitRange and NetworkPolicy, the ArgoCD AppProject named `<app>` in the `argocd` namespace, and the tenant IAM role `<cluster>-<app>-tenant`. `kubectl wait --for=condition=Ready platform.nanohype.dev/<app> -n tenants-<team> --timeout=10m`.
+3. **Seed external secrets** in AWS Secrets Manager (External Secrets Operator must be installed — it provides the `aws-secrets-manager` ClusterSecretStore). Per app: `competitive-intelligence` → Slack (3 tokens); `slack-knowledge-bot` → Slack + WorkOS + Notion + Confluence + Google + a state signing secret (**all** OAuth pairs must exist even if unused, or the ExternalSecret won't sync); `digest-pipeline` → approvers + WorkOS directory + DB credentials; `incident-response` → the Grafana OnCall webhook HMAC secret.
+4. **Fill chart values** in `<app>/chart/values-<env>.yaml`: the per-app `tenantInfra.*` keys (pg/aurora endpoints, DynamoDB tables, SQS URLs — FIFO `.fifo` suffixes must match outputs exactly, KMS key id, buckets); slot names match the component's output names 1:1. There's no role ARN to paste — the landing-zone component binds the chart's ServiceAccount to the operator-minted `<cluster>-<app>-tenant` role with an EKS Pod Identity association. Keep `agents.tenant` in `OTEL_RESOURCE_ATTRIBUTES` byte-identical to `spec.tenant`, or the app's spans and the operator's disagree on the same dashboard. Commit + push.
+5. **Register the ApplicationSet** entries in eks-gitops (one per app; matrix generator `clusters × list`, valueFiles `values.yaml` + `values-<env>.yaml`, project `<app>`, destination `tenants-<app>`). ArgoCD reconciles.
 
 **Validate:**
 - `kubectl get applications -n argocd | grep -E 'competitive-intelligence|slack-knowledge-bot|digest-pipeline|incident-response'` → all Synced + Healthy.
-- Tenant pods Running (watch for IRSA 403s → wrong `platformRoleArn`; Postgres connect failures → wrong `tenantInfra.pgHost`; ExternalSecret sync failures → a missing secret key).
+- Tenant pods Running (watch for AWS 403s → the Pod Identity association is missing or points at the wrong namespace/ServiceAccount; Postgres connect failures → wrong `tenantInfra.pgHost`; ExternalSecret sync failures → a missing secret key).
 - `incident-response`'s public webhook ingress has a cert (cert-manager) and its HMAC matches the Grafana OnCall config.
 
 ---
