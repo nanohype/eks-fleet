@@ -295,6 +295,26 @@ spec:
                         are mutually exclusive — with an IPAM pool the CIDR is drawn from
                         the pool, so leave vpcCidr at its default
                 # --- bootstrap (the second, post-Ready Workspace) ------------
+                observabilityTier:
+                  type: string
+                  enum: [floor, full]
+                  default: floor
+                  description: >-
+                    Which observability substrate this cluster runs. floor is
+                    CloudWatch alone: the amazon-cloudwatch-observability addon
+                    publishes Container Insights metrics, and the cluster's
+                    OpenTelemetry gateway exports application metrics as CloudWatch
+                    EMF and logs to CloudWatch Logs. full adds the in-cluster LGTM
+                    stack (Loki, Tempo, kube-state-metrics, grafana-operator) and
+                    Amazon Managed Prometheus / Grafana, which also requires the
+                    managed-monitoring substrate to exist for this cluster.
+                    Published as the observability/tier cluster-Secret label the
+                    eks-gitops generators select on. Both tiers run the same
+                    OpenTelemetry node agent and a gateway on the same
+                    telemetry.monitoring.svc endpoint, so a tenant workload is
+                    identical either way and only the destinations differ.
+                    Defaults to floor — a vended cluster is born light, and opting
+                    up is a deliberate act with a substrate prerequisite.
                 enableAgentPlatform:
                   type: boolean
                   default: true

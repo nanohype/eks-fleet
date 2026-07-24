@@ -208,6 +208,11 @@ spec:
                   # minting it, or the IAM gate rejects the CreateRole.
                   - {key: operator_permissions_boundary_arn, value: {{ dig "operatorPermissionsBoundaryArn" "" $spec | quote }}}
                   - {key: enable_agent_platform, value: {{ dig "enableAgentPlatform" true $spec | quote }}}
+                  # floor unless asked otherwise, matching the XRD default: a vended
+                  # cluster gets CloudWatch-only observability until someone opts it
+                  # up, because full also needs a managed-monitoring workspace that a
+                  # vend does not provision.
+                  - {key: observability_tier, value: {{ dig "observabilityTier" "floor" $spec | quote }}}
                   - {key: tenants_repo_url, value: {{ dig "tenantsRepoUrl" "" $spec | quote }}}
                   # addon-catalog GitOps repo the spoke's app-of-apps tracks. Required +
                   # git-URL-validated by the substrate (no default there), so always sent;
