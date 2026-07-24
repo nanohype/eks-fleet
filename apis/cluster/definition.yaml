@@ -295,6 +295,26 @@ spec:
                         are mutually exclusive — with an IPAM pool the CIDR is drawn from
                         the pool, so leave vpcCidr at its default
                 # --- bootstrap (the second, post-Ready Workspace) ------------
+                observabilityTier:
+                  type: string
+                  enum: [floor, full]
+                  default: floor
+                  description: >-
+                    Which observability substrate this cluster runs. floor is
+                    CloudWatch alone: the amazon-cloudwatch-observability addon
+                    publishes Container Insights metrics, and the cluster's
+                    OpenTelemetry gateway exports application metrics as CloudWatch
+                    EMF and logs to CloudWatch Logs. full adds the in-cluster LGTM
+                    stack (Loki, Tempo, kube-state-metrics, grafana-operator) and
+                    Amazon Managed Prometheus / Grafana, which also requires the
+                    managed-monitoring substrate to exist for this cluster.
+                    Published as the observability/tier cluster-Secret label the
+                    eks-gitops generators select on. Both tiers run the same
+                    OpenTelemetry node agent and a gateway on the same
+                    telemetry.monitoring.svc endpoint, so a tenant workload is
+                    identical either way and only the destinations differ.
+                    Defaults to floor — a vended cluster is born light, and opting
+                    up is a deliberate act with a substrate prerequisite.
                 enableAgentPlatform:
                   type: boolean
                   default: true
@@ -339,7 +359,7 @@ spec:
                   # bump). Keep in lockstep with the same default in
                   # compositions/cluster-aws.yaml; bump both to roll the substrate
                   # forward (the SHA is a landing-zone main commit).
-                  default: "git::https://github.com/nanohype/landing-zone.git?ref=9243a18005f92fb932a766537bb88c5becfeb759"
+                  default: "git::https://github.com/nanohype/landing-zone.git?ref=1b5714dd25b9d12d53aafafaee4c2cc851fa178e"
                   description: >-
                     Git source for the landing-zone repo the Workspace fetches; tofu runs
                     in the fleet/aws/cluster-stack subdir (set by the composition's
