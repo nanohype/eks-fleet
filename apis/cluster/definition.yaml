@@ -359,7 +359,7 @@ spec:
                   # bump). Keep in lockstep with the same default in
                   # compositions/cluster-aws.yaml; bump both to roll the substrate
                   # forward (the SHA is a landing-zone main commit).
-                  default: "git::https://github.com/nanohype/landing-zone.git?ref=9243a18005f92fb932a766537bb88c5becfeb759"
+                  default: "git::https://github.com/nanohype/landing-zone.git?ref=1b5714dd25b9d12d53aafafaee4c2cc851fa178e"
                   description: >-
                     Git source for the landing-zone repo the Workspace fetches; tofu runs
                     in the fleet/aws/cluster-stack subdir (set by the composition's
