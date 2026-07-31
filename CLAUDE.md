@@ -131,7 +131,7 @@ task cel-test    # prove the XRD's CEL guardrails reject bad specs (throwaway ki
 
 ## CI
 
-`.github/workflows/ci.yml` runs four gates on every PR + push to `main`, none of
+`.github/workflows/ci.yml` runs five gates on every PR + push to `main`, none of
 which needs a live cluster:
 
 - **lint** — `yamllint` over all manifests.
@@ -150,6 +150,13 @@ which needs a live cluster:
   kind cluster, and asserts each `tests/cel/reject/*.yaml` is denied at admission
   (with its declared message) and each accept fixture + example is admitted, since
   `crossplane render` never evaluates the XRD's CEL guardrails.
+- **reaper-tests** — `scripts/reaper-test.sh` extracts the inline script from the
+  `fleet-reaper` CronJob and runs it against a stub `kubectl` with the real `jq`.
+  The reaper is the only shell here that can destroy infrastructure, and yamllint
+  sees it as an opaque string. The load-bearing case is that a failed listing
+  fails the job: `kubectl ... | jq` would report "nothing expired" on an RBAC or
+  API error, because a pipeline's status is the last command's and `jq` exits 0
+  on empty stdin.
 
 ## Claude Code Tooling
 

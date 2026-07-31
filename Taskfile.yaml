@@ -46,7 +46,18 @@ tasks:
         echo "render tests/render/cluster-with-status.yaml (gated branches)"
         crossplane render tests/render/cluster-with-status.yaml compositions/cluster-aws.yaml config/functions.yaml \
           --observed-resources tests/render/observed >/dev/null
+      - task: reaper-test
       - echo "All validations passed."
+
+  reaper-test:
+    desc: >-
+      Run the fleet-reaper CronJob's inline script against a stub kubectl. The
+      reaper deletes real EKS clusters and yamllint sees its script as an opaque
+      string, so this is the only thing that executes it. Proves a failed listing
+      fails the job rather than reading as "nothing expired", and that persistent
+      clusters are never candidates. Needs jq + pyyaml; no cluster.
+    cmds:
+      - scripts/reaper-test.sh
 
   cel-test:
     desc: >-

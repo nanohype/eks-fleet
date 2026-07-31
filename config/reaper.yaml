@@ -99,7 +99,17 @@ spec:
                 - |
                   set -eu
                   now=$(date +%s)
-                  expired=$(kubectl get clusters.fleet.nanohype.dev -A -o json | jq -r --argjson now "$now" '
+                  # The listing is captured on its own line rather than piped
+                  # straight into jq. A pipeline's exit status is the last
+                  # command's, and jq exits 0 on empty stdin — so
+                  # `kubectl ... | jq ...` turns an RBAC change, an API error or
+                  # a missing CRD into "nothing expired": the CronJob goes green
+                  # while every ephemeral spoke leaks. Assigning from a command
+                  # substitution makes a kubectl failure the script's own exit
+                  # status under `set -e`, which is the whole safety property
+                  # here. Don't collapse these two statements back together.
+                  clusters=$(kubectl get clusters.fleet.nanohype.dev -A -o json)
+                  expired=$(printf '%s' "$clusters" | jq -r --argjson now "$now" '
                     .items[]
                     | select((.spec.ttlDays // 0) > 0)
                     | select((.metadata.creationTimestamp | fromdateiso8601) + (.spec.ttlDays * 86400) < $now)
