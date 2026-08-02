@@ -462,9 +462,12 @@ spec:
         - name: REGION
           type: string
           jsonPath: .spec.region
+          description: Region the cluster was vended into.
         - name: ACCOUNT
           type: string
           jsonPath: .spec.account
+          description: Workload account the cluster was vended into.
         - name: ENDPOINT
           type: string
           jsonPath: .status.clusterEndpoint
+          description: EKS API endpoint — empty until the vend converges.
