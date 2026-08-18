@@ -33,13 +33,13 @@ status:
   atProvider:
     outputs:
       cluster_name: development-platform
-      cluster_endpoint: https://ABCDEF0123456789ABCDEF0123456789.gr7.us-west-2.eks.amazonaws.com
+      cluster_endpoint: https://ABCDEF0123456789ABCDEF0123456789.gr7.us-east-1.eks.amazonaws.com
       cluster_certificate_authority_data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t
       cluster_security_group_id: sg-0123456789abcdef0
-      oidc_provider_arn: arn:aws:iam::111111111111:oidc-provider/oidc.eks.us-west-2.amazonaws.com/id/ABCDEF0123456789ABCDEF0123456789
-      oidc_issuer: oidc.eks.us-west-2.amazonaws.com/id/ABCDEF0123456789ABCDEF0123456789
+      oidc_provider_arn: arn:aws:iam::111111111111:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/ABCDEF0123456789ABCDEF0123456789
+      oidc_issuer: oidc.eks.us-east-1.amazonaws.com/id/ABCDEF0123456789ABCDEF0123456789
       karpenter_iam_role_arn: arn:aws:iam::111111111111:role/eks-fleet/development-platform-karpenter
       vpc_id: vpc-0123456789abcdef0
       private_subnet_ids: ["subnet-0aaa0aaa0aaa0aaa0", "subnet-0bbb0bbb0bbb0bbb0", "subnet-0ccc0ccc0ccc0ccc0"]
       public_subnet_ids: ["subnet-0ddd0ddd0ddd0ddd0", "subnet-0eee0eee0eee0eee0", "subnet-0fff0fff0fff0fff0"]
-      private_subnet_az_ids: ["usw2-az1", "usw2-az2", "usw2-az3"]
+      private_subnet_az_ids: ["use1-az1", "use1-az2", "use1-az3"]

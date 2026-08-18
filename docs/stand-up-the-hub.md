@@ -25,17 +25,17 @@ on plain IAM trust (`fleet-hub` → `fleet-vend`). Its landing-zone env tree is
 - CLIs: `aws` v2, `tofu` ≥ 1.10.0, `terragrunt`, `kubectl`, `helm`, the Crossplane
   v2 `crossplane` CLI, `task`, `jq`.
 - Region `us-west-2`, ARM/Graviton default.
-- A live SSO session: `aws sso login --profile fleet`. Export `AWS_PROFILE=fleet`
+- A live SSO session: `aws sso login --profile "$FLEET_PROFILE"`. Export `AWS_PROFILE="$FLEET_PROFILE"`
   so terragrunt picks it up.
 
 > **Two repos, one session.** Steps 1–2 run from the **landing-zone** repo root,
 > step 4 from the **eks-fleet** repo root; step 3 and the smoke vend (step 5) are
-> `kubectl`, run from anywhere. Keep the same `AWS_PROFILE=fleet` shell throughout.
+> `kubectl`, run from anywhere. Keep the same `AWS_PROFILE="$FLEET_PROFILE"` shell throughout.
 
 ## 1. Point the fleet account id + state backend
 
 ```bash
-export AWS_PROFILE=fleet
+export AWS_PROFILE="$FLEET_PROFILE"
 # The real fleet account id — injected at apply time so it never lands in a
 # tracked file (account.hcl stays a placeholder).
 export TERRAGRUNT_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -163,6 +163,6 @@ into a workload spoke, provision `components/aws/fleet-vend` in that account and
 
 Reverse order: delete any `Cluster`s (wait for both Workspaces to clear), then
 `terragrunt destroy` each component (fleet-hub → cluster-bootstrap → cluster →
-network), then the state bucket, then `cloudgov orphans --profile fleet` to sweep
+network), then the state bucket, then `cloudgov orphans --profile "$FLEET_PROFILE"` to sweep
 residue (EKS log groups, Karpenter SQS/EventBridge — `tofu destroy` misses those).
 Confirm zero EKS/NAT/VPC/EC2/EBS/ELB/EIP before walking away.

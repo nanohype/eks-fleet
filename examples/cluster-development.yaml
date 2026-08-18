@@ -12,7 +12,7 @@ metadata:
   namespace: platform
 spec:
   account: "111111111111"
-  region: us-west-2
+  region: us-east-1
   environment: development
   # Cluster base name; the EKS cluster becomes <environment>-<clusterName> (development-platform).
   # Required and unique per (account, region, environment); must not equal environment.

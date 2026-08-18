@@ -1,8 +1,19 @@
 # Hub-cluster bootstrap
 
-What turns a plain EKS cluster into the `eks-fleet` hub. In the real flow an
-`eks-gitops` ApplicationSet syncs all of this; the steps below are the manual
-equivalent + the order they must happen in.
+What turns a plain EKS cluster into the `eks-fleet` hub, and the order the steps
+must happen in.
+
+This is a **hand-applied** bootstrap. No `eks-gitops` ApplicationSet syncs this
+directory — nothing under `eks-gitops/applicationsets/` references `eks-fleet`'s
+`config/`, `provider-opentofu`, or the `crossplane-system` bootstrap. That is partly
+by design: `providers.yaml` carries a `<FLEET_ACCOUNT_ID>` placeholder that only
+becomes a real value at apply time (step 4 seds it in), so the file is not
+GitOps-safe as committed. Putting the hub bootstrap under ArgoCD means resolving
+that placeholder first — see the note at the top of `providers.yaml`.
+
+Once the hub is running, ArgoCD on it *does* drive everything downstream: the
+`clusters-appset` in `eks-gitops` applies the `Cluster` CRs, and each vended spoke
+reconciles the eks-gitops catalog. It is only this hub bootstrap that is manual.
 
 ## 1. The hub cluster
 

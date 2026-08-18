@@ -25,7 +25,7 @@ metadata:
   namespace: platform
 spec:
   account: "111111111111"
-  region: us-west-2
+  region: us-east-1
   environment: development
   clusterName: platform
   team: platform
@@ -47,11 +47,11 @@ spec:
 # for that branch to render with non-empty vars.
 status:
   clusterName: development-platform
-  clusterEndpoint: https://ABCDEF0123456789ABCDEF0123456789.gr7.us-west-2.eks.amazonaws.com
+  clusterEndpoint: https://ABCDEF0123456789ABCDEF0123456789.gr7.us-east-1.eks.amazonaws.com
   certificateAuthorityData: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t
   clusterSecurityGroupId: sg-0123456789abcdef0
-  oidcProviderArn: arn:aws:iam::111111111111:oidc-provider/oidc.eks.us-west-2.amazonaws.com/id/ABCDEF0123456789ABCDEF0123456789
-  oidcIssuer: oidc.eks.us-west-2.amazonaws.com/id/ABCDEF0123456789ABCDEF0123456789
+  oidcProviderArn: arn:aws:iam::111111111111:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/ABCDEF0123456789ABCDEF0123456789
+  oidcIssuer: oidc.eks.us-east-1.amazonaws.com/id/ABCDEF0123456789ABCDEF0123456789
   vpcId: vpc-0123456789abcdef0
   privateSubnetIds: ["subnet-0aaa0aaa0aaa0aaa0", "subnet-0bbb0bbb0bbb0bbb0", "subnet-0ccc0ccc0ccc0ccc0"]
   publicSubnetIds: ["subnet-0ddd0ddd0ddd0ddd0", "subnet-0eee0eee0eee0eee0", "subnet-0fff0fff0fff0fff0"]

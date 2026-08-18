@@ -12,11 +12,23 @@ keep, tenants on top.
 
 ## Accounts & tooling
 
-- **Fleet account** (profile `fleet`) — runs the hub (the standing control plane; a dedicated account, the `live/aws/fleet` tree). Command-level stand-up: [`stand-up-the-hub.md`](stand-up-the-hub.md).
-- **Workload account** `222222222222` (profile `xx`) — receives vended clusters.
-- Region `us-west-2`, ARM/Graviton default.
+> **Prerequisite — neither account exists yet.** This runbook needs two AWS accounts
+> that the current estate does not have. The org is one management account plus one
+> account per venture; there is no dedicated fleet/hub account and no separate
+> workload spoke. Whether to provision them or instead collapse the fleet to
+> same-account vending is an open architecture decision, and until it is settled this
+> runbook cannot be executed end to end. `$FLEET_PROFILE` and `$SPOKE_PROFILE` below
+> are deliberately unbound: set them to whatever the decision produces rather than to
+> profile names that were never configured.
+
+- **Fleet account** (profile `$FLEET_PROFILE`) — runs the hub (the standing control plane; a dedicated account, the `live/aws/fleet` tree). Command-level stand-up: [`stand-up-the-hub.md`](stand-up-the-hub.md).
+- **Workload account** `222222222222` (profile `$SPOKE_PROFILE`) — receives vended clusters.
+- Region: the estate's Ventures OU carries a region-lock SCP permitting only
+  `us-east-1`, so a venture-account vend must use it. Note the landing-zone
+  `live/aws/fleet` tree is still laid out under `us-west-2` and has to move in
+  lockstep; the paths quoted below are that tree as it stands today. ARM/Graviton default.
 - CLIs: `aws` v2, `kubectl`, `helm`, `tofu` ≥ 1.10.0, `terragrunt`, `crossplane`, `cloudgov`, `jq`.
-- Live SSO before each stage: `aws sts get-caller-identity --profile fleet` (and `--profile xx` for cross-account steps). Hand SSO creds in via `! aws sso login --profile <p>`.
+- Live SSO before each stage: `aws sts get-caller-identity --profile "$FLEET_PROFILE"` (and `--profile "$SPOKE_PROFILE"` for cross-account steps). Hand SSO creds in via `! aws sso login --profile <p>`.
 
 ## Status before you start
 
@@ -34,12 +46,12 @@ Goal: a standing hub EKS cluster in the dedicated `fleet` account running Crossp
 
 **Command-level walkthrough: [`stand-up-the-hub.md`](stand-up-the-hub.md).** It provisions the hub cluster from the landing-zone `live/aws/fleet/us-west-2/hub/` tree (network → cluster → cluster-bootstrap → fleet-hub; the network component carries `enable_eks_interface_endpoint=false`, the OIDC-DNS shadow fix), then installs Crossplane + provider-opentofu (IRSA flavor) + the Cluster API, and smoke-vends one cluster same-account.
 
-For **cross-account** vending into a workload spoke, also provision `fleet-vend` in that account (`landing-zone/components/aws/fleet-vend`, profile `xx`, `-var hub_role_arn=<the eks-fleet-crossplane ARN>`) — it outputs the `development-eks-fleet-vend` role (trusts the hub role) + publishes its ARN to SSM `/eks-fleet/development/fleet-vend/vend_role_arn` and its permissions boundary to `/eks-fleet/development/fleet-vend/vend_permissions_boundary_arn` — and set `spec.vendRoleArn` + the two boundary fields (Stage 2).
+For **cross-account** vending into a workload spoke, also provision `fleet-vend` in that account (`landing-zone/components/aws/fleet-vend`, profile `$SPOKE_PROFILE`, `-var hub_role_arn=<the eks-fleet-crossplane ARN>`) — it outputs the `development-eks-fleet-vend` role (trusts the hub role) + publishes its ARN to SSM `/eks-fleet/development/fleet-vend/vend_role_arn` and its permissions boundary to `/eks-fleet/development/fleet-vend/vend_permissions_boundary_arn` — and set `spec.vendRoleArn` + the two boundary fields (Stage 2).
 
 **Validate** (gates from stand-up-the-hub.md §2 + §4):
-- `aws eks describe-cluster --name hub-eks --region us-west-2 --profile fleet` → `ACTIVE`.
+- `aws eks describe-cluster --name hub-eks --region us-west-2 --profile "$FLEET_PROFILE"` → `ACTIVE`.
 - `kubectl get provider.pkg.crossplane.io provider-opentofu -o wide` → `Healthy=True`.
-- `aws s3 ls s3://nanohype-eks-fleet-tfstate/ --profile fleet` → versioned bucket.
+- `aws s3 ls s3://nanohype-eks-fleet-tfstate/ --profile "$FLEET_PROFILE"` → versioned bucket.
 - `kubectl get xrd clusters.fleet.nanohype.dev` and `kubectl get composition cluster-aws` present.
 
 ---
@@ -57,7 +69,7 @@ The first vend is simplest as a **direct `Cluster` CR**. Driving it from portal 
 **Validate:**
 - `kubectl get cluster <name> -n platform -o jsonpath='{.status.clusterEndpoint}'` → non-empty.
 - The connection secret `<name>-kubeconfig` exists in the `platform` namespace.
-- `cloudgov orphans --profile xx` is clean (no failed-create residue).
+- `cloudgov orphans --profile "$SPOKE_PROFILE"` is clean (no failed-create residue).
 
 ---
 

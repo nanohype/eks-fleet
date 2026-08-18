@@ -23,10 +23,18 @@ eks-fleet/
 │   ├── local/                   # Local kind hub: provider + ClusterProviderConfig (source None, creds via mounted Secret file)
 │   ├── functions.yaml           # function-go-templating + function-auto-ready
 │   ├── providers/               # The hub ClusterProviderConfig (single, source None)
-│   └── reaper.yaml              # Orphan-Workspace reaper CronJob
+│   └── reaper.yaml              # TTL reaper CronJob: deletes expired ephemeral Cluster CRs (script inline)
 ├── examples/                    # Sample Cluster resources
 ├── docs/                        # Architecture + design decisions
-├── scripts/                     # reap-orphans.sh (backs the reaper CronJob)
+├── tests/
+│   ├── cel/                     # XRD CEL fixtures: reject/* must be denied, accept/* admitted
+│   └── render/                  # Status-augmented fixture exercising the gated composition branches
+├── scripts/
+│   ├── check-substrate-contract.py  # Composition vars ↔ pinned landing-zone variables.tf
+│   ├── cel-admission-test.sh    # XRD CEL guardrails on a throwaway kind cluster
+│   ├── xrd-to-crd.py            # Derives a plain CRD from the XRD (backs cel-admission-test.sh)
+│   ├── reaper-test.sh           # Runs the CronJob's inline script against a stub kubectl
+│   └── reap-orphans.sh          # Manual cloudgov sweep for AWS residue tofu can't reach (unrelated to the CronJob)
 ├── crossplane.yaml              # Package metadata (this repo as a Crossplane Configuration)
 └── Taskfile.yaml
 ```

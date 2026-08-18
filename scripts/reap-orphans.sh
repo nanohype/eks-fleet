@@ -23,12 +23,12 @@
 #
 # DRY-RUN by default (prints the delete script for review). Pass --apply to run it.
 #
-# Usage: reap-orphans.sh --profile <aws-profile> [--region us-west-2] [--apply]
+# Usage: reap-orphans.sh --profile <aws-profile> [--region us-east-1] [--apply]
 # Requires: cloudgov (https://github.com/nanohype/cloudgov) and jq on PATH.
 
 set -euo pipefail
 
-PROFILE="" REGION="us-west-2" APPLY=0
+PROFILE="" REGION="us-east-1" APPLY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --profile) PROFILE="$2"; shift 2 ;;
@@ -81,4 +81,4 @@ for s in "$workdir"/delete-orphans-*.sh; do
   fi
 done
 
-echo "== $([ "$APPLY" -eq 1 ] && echo "reaped $count orphan(s)" || echo "found $count orphan(s) — re-run with APPLY=1 to delete") =="
+echo "== $([ "$APPLY" -eq 1 ] && echo "reaped $count orphan(s)" || echo "found $count orphan(s) — re-run with --apply to delete") =="

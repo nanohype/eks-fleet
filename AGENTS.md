@@ -48,9 +48,21 @@ Every `Cluster`:
    assumes. A same-account vend needs nothing here.
 2. Copy `examples/cluster-development.yaml`, set `metadata.namespace`,
    `spec.region`, `spec.account`, and the node sizing.
-3. `kubectl apply -f` it to the management cluster. ArgoCD does this in the real
-   flow; `kubectl` is the manual path.
-4. Watch: `kubectl get cluster <name> -n <namespace> -o wide` → the status fills in
+3. **Cross-account only — set the boundary ARNs.** `spec.vendRoleArn` is rejected
+   at admission unless `spec.clusterPermissionsBoundaryArn` **and**
+   `spec.operatorPermissionsBoundaryArn` are both non-empty (a CEL rule on the
+   XRD). Both take the vend boundary the target account publishes to SSM at
+   `/eks-fleet/<env>/fleet-vend/vend_permissions_boundary_arn`. The fleet role's
+   IAM gate only mints roles carrying its exact boundary, so a vend ordered
+   without them 403s ~20 minutes into the apply — the CEL rule turns that into an
+   instant rejection. A same-account hub vend leaves `vendRoleArn` empty and the
+   rule never fires; set both to the hub boundary
+   (`/eks-fleet/<env>/fleet-hub/hub_permissions_boundary_arn`) if you want the
+   same gating there. `examples/cluster-restricted.yaml` is the cross-account shape.
+4. `kubectl apply -f` it to the hub cluster (the management cluster that runs
+   Crossplane — not the `management` *account*, which is a different thing).
+   ArgoCD does this in the real flow; `kubectl` is the manual path.
+5. Watch: `kubectl get cluster <name> -n <namespace> -o wide` → the status fills in
    as the Workspace converges (network first, then cluster — EKS takes 20-40 min).
    The kubeconfig connection secret lands in the `Cluster`'s namespace.
 
