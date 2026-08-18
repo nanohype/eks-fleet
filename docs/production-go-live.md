@@ -12,14 +12,21 @@ keep, tenants on top.
 
 ## Accounts & tooling
 
-> **Prerequisite — neither account exists yet.** This runbook needs two AWS accounts
-> that the current estate does not have. The org is one management account plus one
-> account per venture; there is no dedicated fleet/hub account and no separate
-> workload spoke. Whether to provision them or instead collapse the fleet to
-> same-account vending is an open architecture decision, and until it is settled this
-> runbook cannot be executed end to end. `$FLEET_PROFILE` and `$SPOKE_PROFILE` below
-> are deliberately unbound: set them to whatever the decision produces rather than to
-> profile names that were never configured.
+> **This runbook is a worked example of a two-account deployment.** The two-account
+> shape is a choice, not the contract: a vend is **same-account by default**
+> (`spec.vendRoleArn` unset), and a separate workload spoke is only needed if you opt
+> into cross-account vending. See
+> [the contract in `AGENTS.md`](../AGENTS.md#the-contract-read-this-before-any-example)
+> before treating any value here as required.
+>
+> What genuinely blocks running this today is narrower: **no hub exists.** Even a
+> same-account vend needs a hub EKS cluster running Crossplane + provider-opentofu,
+> the `eks-fleet-crossplane` IRSA role, and the state bucket — none of which have been
+> stood up. That is an uncreated instance, not a gap in the API.
+>
+> `$FLEET_PROFILE` and `$SPOKE_PROFILE` are deliberately unbound: bind them to
+> whatever accounts you actually use, rather than to profile names that only ever
+> existed on one machine.
 
 - **Fleet account** (profile `$FLEET_PROFILE`) — runs the hub (the standing control plane; a dedicated account, the `live/aws/fleet` tree). Command-level stand-up: [`stand-up-the-hub.md`](stand-up-the-hub.md).
 - **Workload account** `222222222222` (profile `$SPOKE_PROFILE`) — receives vended clusters.

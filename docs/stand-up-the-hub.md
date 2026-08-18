@@ -1,20 +1,40 @@
 # Stand up the EKS hub (rung 0)
 
+> ### This is a worked example, not the contract
+>
+> Every concrete value below — the region `us-west-2`, the account layout, the
+> `$FLEET_PROFILE` / `$SPOKE_PROFILE` profile names, the `live/aws/fleet/us-west-2/hub/`
+> tree — describes **one** deployment. None of it is required by the `Cluster` API.
+>
+> The contract is in [`AGENTS.md`](../AGENTS.md#the-contract-read-this-before-any-example)
+> and in the field descriptions in `apis/cluster/definition.yaml`. In short: a vend is
+> **same-account by default** (`spec.vendRoleArn` unset), `spec.region` takes any
+> region, and the tofu state backend is decoupled from it via `spec.stateBucket` /
+> `spec.stateRegion`. Cross-account is opt-in, and only then do the two permissions
+> boundary ARNs become required.
+>
+> Read this file for the *sequence* — what has to exist before what — and substitute
+> your own region, accounts and profiles throughout. Note also that the estate's
+> Ventures OU carries a region-lock SCP permitting only `us-east-1`, so the
+> `us-west-2` values below cannot be used verbatim in a venture account.
+
 The command-level walkthrough for standing up the standing **eks-fleet management
 hub** — a real EKS cluster in a dedicated `fleet` account running Crossplane v2 +
-provider-opentofu + ArgoCD, able to vend clusters into workload accounts. This is
-the detailed version of `production-go-live.md` Stage 1; the orchestration spine
-(vend → addons → tenants) continues there.
+provider-opentofu + ArgoCD, able to vend clusters. This is the detailed version of
+`production-go-live.md` Stage 1; the orchestration spine (vend → addons → tenants)
+continues there.
 
 You drive this — it spends real AWS money (~$45–70/day for a standing hub). Each
 step has a validation gate; don't advance until it passes.
 
-## Where the hub lives
+## Where the hub lives (in this example)
 
-A dedicated **`fleet`** account — separate from the org-payer account AND from the
+A dedicated **`fleet`** account — separate from the org-payer account AND from any
 workload (spoke) accounts, so the cluster factory sits outside the workload blast
-radius. Accounts are independent (no AWS Org required); cross-account vending works
-on plain IAM trust (`fleet-hub` → `fleet-vend`). Its landing-zone env tree is
+radius. A dedicated account is this example's choice, not a requirement: the hub can
+vend into its own account, and that is the default. Accounts are independent (no AWS
+Org required); cross-account vending, when you opt into it, works on plain IAM trust
+(`fleet-hub` → `fleet-vend`). This example's landing-zone env tree is
 `live/aws/fleet/us-west-2/hub/`.
 
 ## Prereqs
