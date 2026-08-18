@@ -68,6 +68,13 @@ Every `Cluster`:
 - Is rendered by `compositions/cluster-aws.yaml` against the XRD in
   `apis/cluster/definition.yaml`.
 
+**The XRD is a published interface.** `nanohype/clusters` vendors a JSON schema
+derived from `apis/cluster/definition.yaml`, pinned to a specific eks-fleet commit in
+its `schemas/sources.json`, and a weekly freshness check opens a PR there when this
+repo's `main` moves ahead of that pin. If you change the schema — including a
+`description` or a `default` — expect it to land as a diff in another repo's review
+queue. Say so in your PR body.
+
 ## Vend a cluster
 
 ### The default path — same account
