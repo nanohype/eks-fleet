@@ -16,7 +16,7 @@ jobs:
     name: Lint YAML
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: pipx install yamllint
       - run: yamllint -c .yamllint.yaml .
 
@@ -34,8 +34,8 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
       - name: check composition <-> substrate variable contract
@@ -48,14 +48,18 @@ jobs:
     env:
       # crank CLI + render-engine image version (kept identical between the two), and
       # the verified sha256 of the linux_amd64 crank binary at that version.
-      CRANK_VERSION: v2.3.1
-      # releases.crossplane.io publishes a crank.sha256 next to the binary, but it is
-      # stale for this release (it does not match the shipped artifact), so the trusted
-      # digest is pinned here instead — reviewed in-repo, independent of the CDN. Bump
-      # it in lockstep whenever CRANK_VERSION moves; the gate below fails until you do.
-      CRANK_SHA256: cb1fc84c0f04b7b3b88374a8037701b6c65a36007c28544968bde1011ca5491e
+      CRANK_VERSION: v2.3.4
+      # releases.crossplane.io publishes a crank.sha256 next to the binary, but it does
+      # not match the shipped artifact — re-confirmed at v2.3.4, where the CDN advertises
+      # 5f1c901604319c5ffae5ec63147dfd1e53c09ad30d8d68a1e1f9e48118fccc14 while the binary
+      # actually hashes to the value below. So the trusted digest is pinned here instead:
+      # reviewed in-repo, independent of the CDN. Bump it in lockstep whenever
+      # CRANK_VERSION moves; the gate below fails until you do. Recompute it by
+      # downloading the artifact and hashing it yourself — never copy the published
+      # .sha256, which is what this note exists to warn about.
+      CRANK_SHA256: 6423a01981a701315cbf978a6dbcd45575f6b881bc80f4c25f9c09dd403bc1c5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: install crossplane CLI
         run: |
           url="https://releases.crossplane.io/stable/${CRANK_VERSION}/bin/linux_amd64/crank"
@@ -114,11 +118,11 @@ jobs:
     # it on a kind cluster, and asserts each reject fixture is denied at admission with
     # its declared message and each accept fixture + example is admitted.
     steps:
-      - uses: actions/checkout@v4
-      - uses: helm/kind-action@v1.14.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
         with:
           cluster_name: eks-fleet-cel
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
       - run: pip install pyyaml
@@ -137,8 +141,8 @@ jobs:
     # listing that errors is proven to fail the job rather than read as "nothing
     # expired", and persistent clusters are proven not to be candidates.
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
       - run: pip install pyyaml
@@ -153,7 +157,7 @@ jobs:
     permissions:
       pull-requests: write
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             github.rest.issues.createComment({
