@@ -12,7 +12,7 @@ is free (local kind). **Time:** ~45 min, most of it the EKS build.
 ## Prereqs
 
 - `kx` workspace, `helm`, `kubectl`, the Crossplane v2 `crossplane` CLI, `tofu`.
-- A live SSO session (`aws sts get-caller-identity --profile fleet-admin`). The hub
+- A live SSO session (`aws sts get-caller-identity --profile "$FLEET_PROFILE"`). The hub
   authenticates with temp creds from this session, so **finish within its lifetime**.
 - Bedrock/region access in us-west-2 (same as the e2e).
 
@@ -58,7 +58,7 @@ and points the AWS SDK at it (`AWS_SHARED_CREDENTIALS_FILE`), so the Secret must
 **before** the provider pod starts:
 
 ```bash
-eval "$(aws configure export-credentials --profile fleet-admin --format env)"
+eval "$(aws configure export-credentials --profile "$FLEET_PROFILE" --format env)"
 kubectl create secret generic aws-creds -n crossplane-system \
   --from-literal=credentials="$(printf '[default]\naws_access_key_id=%s\naws_secret_access_key=%s\naws_session_token=%s\n' \
     "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" "$AWS_SESSION_TOKEN")"

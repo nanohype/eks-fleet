@@ -85,7 +85,7 @@ converged), it blocks **both** create and delete, and a naive
 that orphans an empty-state vend (live AWS, empty S3 state). Recovery is to drop
 the Workspace finalizer and delete the AWS resources directly. See the teardown
 procedure (reverse order: `Cluster`s → Workspaces clear → network → state bucket →
-`cloudgov orphans --profile fleet` to sweep) in
+`cloudgov orphans --profile "$FLEET_PROFILE"` to sweep) in
 [stand-up-the-hub.md](../stand-up-the-hub.md#teardown).
 
 ## After it clears

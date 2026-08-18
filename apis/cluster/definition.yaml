@@ -48,12 +48,15 @@ spec:
                 region:
                   type: string
                   description: >-
-                    AWS region the cluster is vended into. Any region is valid —
-                    the tofu state backend is decoupled from it: state always lives
-                    in the single hub-account bucket (nanohype-eks-fleet-tfstate,
-                    us-west-2), never in a per-region bucket that would have to track
-                    this value. So a vend into us-east-1 builds the cluster there but
-                    stores its state in us-west-2.
+                    AWS region the cluster is vended into. Any region is valid — the
+                    tofu state backend is decoupled from it: state lives in the single
+                    hub-account bucket named by spec.stateBucket, in spec.stateRegion,
+                    never in a per-region bucket that would have to track this value.
+                    So a vend into us-west-1 builds the cluster there but still stores
+                    its state in the one hub bucket. Note the estate's Ventures OU
+                    carries a region-lock SCP that denies non-global actions outside
+                    us-east-1, so a venture-account vend must name a region that SCP
+                    permits.
                 environment:
                   type: string
                   default: development
@@ -147,7 +150,8 @@ spec:
                     and environment. Must not equal the environment token. Capped at 12
                     characters so the derived <environment>-<clusterName> keeps the tightest
                     cluster-scoped S3 name (agent-iam's account+region-qualified
-                    model-artifacts bucket) within S3's 63-char limit in us-west-2.
+                    model-artifacts bucket) within S3's 63-char limit for a
+                    9-character region token like us-east-1.
                 clusterVersion:
                   type: string
                   default: "1.36"
@@ -380,6 +384,36 @@ spec:
                     Git source for the landing-zone repo the Workspace fetches; tofu runs
                     in the fleet/aws/cluster-stack subdir (set by the composition's
                     entrypoint), which needs the whole repo present. See docs/architecture.md.
+                # --- the tofu state backend ----------------------------------
+                # Both Workspaces complete the entrypoint's partial `backend "s3" {}`
+                # from initArgs. These are spec fields rather than composition literals
+                # because the bucket and its region are per-estate facts: a fork, a
+                # second hub, or a region-locked account cannot use one hard-coded pair.
+                # The state key is NOT a field — it is derived from the Cluster's
+                # namespace + name so two same-named Clusters can never share state.
+                stateBucket:
+                  type: string
+                  default: "nanohype-eks-fleet-tfstate"
+                  description: >-
+                    S3 bucket holding every vended cluster's tofu state. One bucket in
+                    the hub account for the whole fleet, provisioned by landing-zone's
+                    fleet-hub component alongside the hub IRSA role — not by a vend, so
+                    it must exist before the first Cluster is applied. The per-cluster
+                    state key is derived (fleet/<namespace>/<name>/terraform.tfstate),
+                    so this names only the bucket.
+                stateRegion:
+                  type: string
+                  default: "us-east-1"
+                  description: >-
+                    Region the stateBucket lives in. This is the bucket's own region,
+                    deliberately NOT spec.region — the S3 backend validates the bucket
+                    against it, and decoupling the two lets a vend into any region still
+                    init against the one real state bucket. Defaults to us-east-1, the
+                    only region the estate's Ventures-OU region-lock SCP permits. Note
+                    the landing-zone live fleet tree still provisions its hub under
+                    us-west-2; that tree and this default must move in lockstep, and
+                    until they do a vend needs stateBucket/stateRegion set explicitly to
+                    wherever the bucket actually is.
               required:
                 - account
                 - region
@@ -410,6 +444,15 @@ spec:
                     vendRoleArn requires clusterPermissionsBoundaryArn +
                     operatorPermissionsBoundaryArn (the fleet-vend boundary, SSM
                     /eks-fleet/<env>/fleet-vend/vend_permissions_boundary_arn)
+                # The backend pair rides initArgs, where tofu resolves it long after
+                # admission: an empty bucket or region renders `-backend-config=bucket=`
+                # and fails `tofu init` with a message that names neither the Cluster nor
+                # the empty field. Both default non-empty, so this only catches an
+                # explicit blanking — cheap to reject here, expensive to debug there.
+                - rule: >-
+                    (!has(self.stateBucket) || self.stateBucket != '') &&
+                    (!has(self.stateRegion) || self.stateRegion != '')
+                  message: "stateBucket and stateRegion must be non-empty (they complete the tofu S3 backend; omit them to take the defaults)"
             status:
               type: object
               description: >-
@@ -452,9 +495,9 @@ spec:
                   type: array
                   items: {type: string}
                   description: >-
-                    AWS AZ IDs (e.g. usw2-az1) of the cluster's private subnets, in
+                    AWS AZ IDs (e.g. use1-az1) of the cluster's private subnets, in
                     privateSubnetIds order (cluster-stack's private_subnet_az_ids output).
-                    AZ IDs, not AZ names — a name like us-west-2a maps to a different
+                    AZ IDs, not AZ names — a name like us-east-1a maps to a different
                     physical zone per account, so it isn't meaningful across the account
                     boundary an adopted/shared subnet crosses; the AZ ID is the stable
                     cross-account identifier.

@@ -9,7 +9,7 @@ metadata:
   namespace: platform
 spec:
   account: "111111111111"
-  region: us-west-2
+  region: us-east-1
   environment: development
   clusterName: eks
   team: platform

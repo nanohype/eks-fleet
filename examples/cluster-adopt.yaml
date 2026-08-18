@@ -15,7 +15,7 @@ metadata:
   namespace: platform
 spec:
   account: "222222222222"
-  region: us-west-2
+  region: us-east-1
   environment: staging
   # Cluster base name; the EKS cluster becomes <environment>-<clusterName>
   # (staging-shared). Required, unique per (account, region, environment), and
