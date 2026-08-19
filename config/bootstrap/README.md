@@ -28,8 +28,10 @@ Provision in the fleet account:
 - Role `eks-fleet-crossplane`, trusting `system:serviceaccount:crossplane-system:provider-opentofu`,
   allowed to (a) read/write the fleet tfstate bucket, and (b)
   `sts:AssumeRole` into each workload account's vend role.
-- The `nanohype-eks-fleet-tfstate` S3 bucket (versioned, encrypted; S3 native
-  locking via `use_lockfile`, no DynamoDB table).
+- The fleet state S3 bucket (versioned, encrypted; S3 native locking via
+  `use_lockfile`, no DynamoDB table). Pick a globally unique name — it is what a
+  `Cluster`'s `spec.stateBucket` names, and the API requires it precisely because no
+  one name can be correct for two hubs.
 
 Put the role ARN in `providers.yaml`'s ServiceAccount annotation — it lands on the
 `provider-opentofu` ServiceAccount as `eks.amazonaws.com/role-arn`, the ambient

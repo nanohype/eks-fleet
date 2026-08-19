@@ -81,20 +81,23 @@ task apply CLOUD=aws ACCOUNT=fleet REGION=us-west-2 ENVIRONMENT=hub COMPONENT=fl
   endpoint's private DNS would shadow the IRSA OIDC issuer subdomain.
 - `cluster` is public-endpoint so you can reach the API; `cluster-bootstrap` lands
   Cilium + ArgoCD.
-- `fleet-hub` mints the `eks-fleet-crossplane` IRSA role + the
-  `nanohype-eks-fleet-tfstate` bucket (the vended clusters' state backend).
+- `fleet-hub` mints the `eks-fleet-crossplane` IRSA role + the fleet state bucket
+  (the vended clusters' state backend). Its name is yours to choose and must be
+  globally unique — S3 bucket names are a single global namespace with no ownership
+  check, so a name published in a runbook is one anyone can claim. `$FLEET_STATE_BUCKET`
+  stands for it below; it is what a `Cluster`'s `spec.stateBucket` names.
 
-> If fleet-hub fails with `BucketAlreadyOwnedByYou` on `nanohype-eks-fleet-tfstate`
-> (the bucket exists from a prior run but isn't in state yet), adopt it and re-apply:
-> `cd live/aws/fleet/us-west-2/hub/fleet-hub && terragrunt import aws_s3_bucket.fleet_state nanohype-eks-fleet-tfstate`,
-> then re-run the fleet-hub apply. (Or `aws s3 rb s3://nanohype-eks-fleet-tfstate --force`
+> If fleet-hub fails with `BucketAlreadyOwnedByYou` (the bucket exists from a prior
+> run but isn't in state yet), adopt it and re-apply:
+> `cd live/aws/fleet/us-west-2/hub/fleet-hub && terragrunt import aws_s3_bucket.fleet_state "$FLEET_STATE_BUCKET"`,
+> then re-run the fleet-hub apply. (Or `aws s3 rb "s3://$FLEET_STATE_BUCKET" --force`
 > if it's empty and you'd rather start clean.)
 
 **Validate:**
 - `aws eks describe-cluster --name hub-eks --region us-west-2` → `ACTIVE`.
 - `cd live/aws/fleet/us-west-2/hub/fleet-hub && terragrunt output -raw hub_role_arn`
   → the `eks-fleet-crossplane` role ARN (keep it for step 4).
-- `aws s3 ls s3://nanohype-eks-fleet-tfstate/` → the versioned bucket.
+- `aws s3 ls "s3://$FLEET_STATE_BUCKET/"` → the versioned bucket.
 
 ## 3. kubectl at the hub
 
