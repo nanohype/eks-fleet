@@ -12,6 +12,9 @@ spec:
   environment: development
   clusterName: eks
   team: platform
+  # the hub's tofu state backend (required: no default could be right for two hubs)
+  stateBucket: nanohype-eks-fleet-tfstate
+  stateRegion: us-east-1
   endpointPublicAccess: true
   endpointPublicAccessCidrs:
     - "203.0.113.0/24"

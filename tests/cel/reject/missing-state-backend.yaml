@@ -1,0 +1,23 @@
+# The case this change exists to close. Omitting the backend pair used to be the
+# documented happy path: the XRD defaulted both, admission saw non-empty values and
+# passed, the composition's dig found the keys and never fell back, and tofu inited
+# against whichever bucket and region this repo happened to ship — twenty minutes
+# later, in a Workspace, failing with a message that named a bucket rather than the
+# field that chose it. Every guard on that path fired correctly and the result was
+# still wrong, because each was checking presence rather than truth.
+#
+# Both fields are now `required` with no default, so omission is denied at admission
+# and the message names what is missing.
+# EXPECT: spec.stateBucket
+apiVersion: fleet.nanohype.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: reject-missing-state-backend
+  namespace: platform
+spec:
+  account: "111111111111"
+  region: us-east-1
+  environment: development
+  clusterName: eks
+  team: platform
+  # stateBucket + stateRegion omitted entirely -> rejected as missing required fields

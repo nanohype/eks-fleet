@@ -112,10 +112,19 @@ pod as a shared credentials file (`AWS_SHARED_CREDENTIALS_FILE`,
 
 ### The Cluster XRD has a downstream consumer
 
-`apis/cluster/definition.yaml` is not just this repo's API. `nanohype/clusters`
-vendors a JSON schema derived from it, recording the exact eks-fleet commit it was
-derived from in its `schemas/sources.json` (`repo: nanohype/eks-fleet`). It runs two
-checks against that pin:
+`apis/cluster/definition.yaml` is not just this repo's API. **Two** repos vendor a
+copy of it, and neither is discoverable from here.
+
+**`nanohype/portal`** keeps its own copy at
+`internal/clusterspec/testdata/cluster-xrd.yaml` and asserts
+`TestEveryXRDFieldIsAccountedFor` against its Go `ClusterSpec` struct — so a field
+added here fails portal's build the moment it refreshes, by design. Portal is what
+writes `Cluster` CRs in the GitOps flow, so a field it does not know about is a field
+no portal-ordered vend ever sets.
+
+**`nanohype/clusters`** vendors a JSON schema derived from the XRD, recording the
+exact eks-fleet commit it was derived from in its `schemas/sources.json`
+(`repo: nanohype/eks-fleet`). It runs two checks against that pin:
 
 - an **integrity** check in its PR CI, which re-derives from the pinned commit and
   hard-fails on a mismatch — deliberately pinned so it cannot go red merely because

@@ -29,6 +29,9 @@ spec:
   environment: development
   clusterName: platform
   team: platform
+  # the hub's tofu state backend (required: no default could be right for two hubs)
+  stateBucket: nanohype-eks-fleet-tfstate
+  stateRegion: us-east-1
   clusterPermissionsBoundaryArn: "arn:aws:iam::111111111111:policy/eks-fleet/eks-fleet-hub-boundary"
   operatorPermissionsBoundaryArn: "arn:aws:iam::111111111111:policy/eks-fleet/eks-fleet-hub-boundary"
   clusterVersion: "1.35"

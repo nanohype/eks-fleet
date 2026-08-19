@@ -12,3 +12,6 @@ spec:
   environment: staging
   clusterName: staging
   team: platform
+  # the hub's tofu state backend (required: no default could be right for two hubs)
+  stateBucket: nanohype-eks-fleet-tfstate
+  stateRegion: us-east-1
