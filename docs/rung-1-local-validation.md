@@ -2,7 +2,7 @@
 
 The cheap end-to-end proof: a namespaced `Cluster` manufactures one **real** EKS
 cluster, the status fills in, then it tears down — with the management hub running
-on a **local kind cluster (kx)** instead of a persistent $70/mo EKS hub. Validates
+on a **local kind cluster (kx)** instead of a persistent EKS hub (~$45–70/day — see `stand-up-the-hub.md`). Validates
 the whole loop (`Cluster` → Composition → provider-opentofu Workspace → cluster-stack
 entrypoint → real EKS → status) before committing to the production hub (rung 0).
 
@@ -14,7 +14,7 @@ is free (local kind). **Time:** ~45 min, most of it the EKS build.
 - `kx` workspace, `helm`, `kubectl`, the Crossplane v2 `crossplane` CLI, `tofu`.
 - A live SSO session (`aws sts get-caller-identity --profile "$FLEET_PROFILE"`). The hub
   authenticates with temp creds from this session, so **finish within its lifetime**.
-- Bedrock/region access in us-west-2 (same as the e2e).
+- Bedrock and EKS access in the region you vend into.
 
 > **Two repos, one cluster.** You drive this from two working copies. **`kx`** owns
 > the kind hub's lifecycle (`task up` / `task down`). **`eks-fleet` owns the control
@@ -30,8 +30,10 @@ provider-opentofu persists state in S3 (not the pod). Create the fleet bucket
 once in the management account (111111111111 — your mgmt account):
 
 ```bash
-aws s3 mb s3://nanohype-eks-fleet-tfstate --region us-west-2
-aws s3api put-bucket-versioning --bucket nanohype-eks-fleet-tfstate \
+FLEET_STATE_BUCKET=<your-fleet-state-bucket>   # globally unique — pick your own
+FLEET_STATE_REGION=<your-state-region>
+aws s3 mb "s3://$FLEET_STATE_BUCKET" --region "$FLEET_STATE_REGION"
+aws s3api put-bucket-versioning --bucket "$FLEET_STATE_BUCKET" \
   --versioning-configuration Status=Enabled
 # locking: S3 native (use_lockfile) — no DynamoDB table needed.
 ```
@@ -168,17 +170,16 @@ aws ec2 describe-vpcs --filter Name=tag:Project,Values=landing-zone Name=tag:Env
 (cd ../kx && task down)                 # tear down the local hub (subshell; stay in eks-fleet)
 ```
 
-If the vended cluster orphans anything (it shouldn't — the entrypoint is the same
-modules the e2e tore down cleanly), the e2e harness's reaping logic in
+If the vended cluster orphans anything, the e2e harness's reaping logic in
 `landing-zone/scripts/e2e.sh` is the reference.
 
-## Verify on first run (design gaps to close while executing)
+## Things to watch during the run
 
-- **Cred wiring (resolved)** — `source: Secret`'s written creds file isn't picked up by
+- **Cred wiring** — `source: Secret`'s written creds file isn't picked up by
   the AWS SDK, so the local runtime config mounts the `aws-creds` Secret and sets
   `AWS_SHARED_CREDENTIALS_FILE` (the ProviderConfig is `source: None`). This is wired in
   `config/local/`; the Secret must exist before the provider pod starts (step 3).
-- **Backend locking (configured)** — the Workspace `initArgs` carry
+- **Backend locking** — the Workspace `initArgs` carry
   `-backend-config=use_lockfile=true`, so the S3 backend locks S3-natively (a lock
   file in the state bucket, no DynamoDB table) — provider-opentofu v1.1.4 ships
   tofu 1.10.8, past the >= 1.10 floor `use_lockfile` needs. Confirm `tofu init`

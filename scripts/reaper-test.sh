@@ -133,10 +133,10 @@ expect() { # <name> <want_exit> <want_delete_count> <want_output_substring>
   fi
 }
 
-# The regression. Before the listing was captured on its own line, this case
-# printed "no expired ephemeral clusters" and exited 0: a pipeline's status is
-# the last command's, and jq exits 0 on empty stdin. RBAC drift, an API error or
-# a missing CRD would all have gone green here while ephemeral spokes leaked.
+# The load-bearing case. A pipeline's status is the last command's and jq exits 0
+# on empty stdin, so `kubectl ... | jq` prints "no expired ephemeral clusters" and
+# exits 0 on RBAC drift, an API error or a missing CRD — green while every ephemeral
+# spoke leaks. This asserts the failure propagates instead.
 export STUB_GET_FAILS=1 STUB_GET_JSON=/dev/null DRY_RUN=false MAX_REAP=5
 expect "a failed listing fails the job" 1 0 "Forbidden"
 

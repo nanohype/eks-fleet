@@ -5,7 +5,7 @@
 # entrypoint owns the AWS provider (region + default_tags + optional cross-account
 # assume_role) and the S3 backend block; per-cluster backend keys ride on the Workspace
 # initArgs. So one ClusterProviderConfig serves every account — cross-account targeting
-# rides on the claim's vendRoleArn -> the entrypoint's assume_role, not a per-account config.
+# rides on the Cluster's vendRoleArn -> the entrypoint's assume_role, not a per-account config.
 apiVersion: opentofu.m.upbound.io/v1beta1
 kind: ClusterProviderConfig
 metadata:

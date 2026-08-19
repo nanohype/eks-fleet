@@ -19,8 +19,8 @@ min wiring + the ~20-40 min EKS build.
   steps 0–5 are not repeated here.
 - The **clusters GitOps repo**: `git@github.com:nanohype/clusters.git` (private; checked out at
   `../clusters`).
-- **Git auth on the clusters repo:** the **portal worker (local) reuses your personal SSH key**
-  (`~/.ssh/id_ed25519`, which already has push access) — no deploy key needed there. **kx's ArgoCD**
+- **Git auth on the clusters repo:** the **portal worker (local) uses a personal SSH key** with push
+  access to the clusters repo (point `GITOPS_SSH_KEY_PATH` at it) — no deploy key needed there. **kx's ArgoCD**
   runs in-cluster and can't see your `~/.ssh`, so it needs its own **read-only deploy key** (minted
   in step 3).
 - portal toolchain: Go, Node, Docker (for Postgres), `task`. The same SSO session + us-west-2
@@ -65,7 +65,7 @@ task seed         # AWS org vars + landing-zone workspaces + a pipeline
 ```
 
 > If the **Provision** form's Account dropdown is empty, add your management account (the `seed`
-> `LZ_ACCOUNT` env, or the Variables/Accounts view). *Verify on first run.*
+> `LZ_ACCOUNT` env, or the Variables/Accounts view). 
 
 ## 3. Wire kx's ArgoCD to apply what portal commits
 
@@ -108,15 +108,14 @@ spec:
 PROJ
 
 # (c) the ApplicationSet (from eks-gitops):
-kubectl apply -f eks-gitops/applicationsets/clusters-appset.yaml
+kubectl apply -f eks-gitops/applicationsets/opt-in/clusters-appset.yaml
 ```
 
 > The appset is a **git-directory generator over `clusters/*`** → one Application per environment
 > dir, applied to the in-cluster hub with prune+selfHeal. The portal worker writes
-> `clusters/<env>/<name>.yaml`, so the paths line up. **This appset has been static-validated but
-> never run on a live hub** — after your first order, eyeball the `clusters-development` Application
+> `clusters/<env>/<name>.yaml`, so the paths line up. **Confirm the wiring end-to-end** — after your first order, eyeball the `clusters-development` Application
 > (Synced/Healthy) and confirm it only reconciles on the hub (kx is your only cluster here, so
-> fine). *Verify on first use.*
+> fine).
 
 ## 4. Vend via the portal UI
 

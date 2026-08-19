@@ -53,10 +53,9 @@ spec:
                     hub-account bucket named by spec.stateBucket, in spec.stateRegion,
                     never in a per-region bucket that would have to track this value.
                     So a vend into us-west-1 builds the cluster there but still stores
-                    its state in the one hub bucket. Note the estate's Ventures OU
-                    carries a region-lock SCP that denies non-global actions outside
-                    us-east-1, so a venture-account vend must name a region that SCP
-                    permits.
+                    its state in the one hub bucket. A region-lock SCP on the target
+                    account's OU can deny actions outside a permitted set, in which
+                    case the region named here must be one that SCP permits.
                 environment:
                   type: string
                   default: development
@@ -421,10 +420,10 @@ spec:
                 - clusterName
                 # The tofu S3 backend. Required rather than defaulted: any default here
                 # is one deployment's answer, and the bucket half is a global-namespace
-                # identifier owned by a specific account. Omission used to inherit this
-                # estate's values, which admission accepted (they were non-empty) and
-                # tofu then failed on at backend init — twenty minutes in, naming a
-                # bucket rather than the field. Required moves that to admission.
+                # identifier owned by a specific account. An empty or wrong value is not
+                # caught until `tofu init` runs inside a Workspace, twenty minutes
+                # into the vend, with a message that names a bucket rather than the
+                # field that chose it. `required` moves that to admission.
                 - stateBucket
                 - stateRegion
               x-kubernetes-validations:

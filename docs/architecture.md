@@ -99,13 +99,14 @@ vend rather than weakening it.
   runtime config sets `--poll=1m` so the status reflects the Workspace promptly.
 - **State** — not persisted in-pod; every Workspace uses the shared S3 backend.
   The per-cluster state key rides on the Workspace `initArgs`
-  (`-backend-config=key=fleet/<namespace>/<name>/terraform.tfstate`, plus the static
-  bucket + `region=us-west-2` + `use_lockfile=true` + `encrypt`), which complete the
+  (`-backend-config=key=fleet/<namespace>/<name>/terraform.tfstate`, plus
+  `bucket=<spec.stateBucket>` + `region=<spec.stateRegion>` + `use_lockfile=true` +
+  `encrypt`), which complete the
   entrypoint's partial `backend "s3" {}` block — so every `Cluster` gets a state
   object isolated by (namespace, name). The key carries the **namespace** because a
   `Cluster` name is unique only within its namespace (two teams may each vend a
   `foo`), so a name-only key would collide across namespaces. The backend `region` is
-  the **state bucket's** region (us-west-2), not `spec.region` — the bucket is one
+  the **state bucket's** region (`spec.stateRegion`), not `spec.region` — the bucket is one
   hub-account resource that never moves with the workload region, and the S3 backend
   validates it against that region; coupling it to `spec.region` would fail
   `tofu init` for every out-of-region vend. Locking is S3-native
@@ -134,7 +135,7 @@ the operator's per-tenant IRSA. Cross-account targeting is explicit: `spec.vendR
 is the fleet-vend role ARN, which the Composition templates straight onto the
 entrypoint's `assume_role_arn` var — not a per-account ProviderConfig. `spec.account`
 records the target account (tags/provenance) and is not load-bearing for the
-assume-role. The 2nd AWS account enters here, and not before.
+assume-role. A second AWS account is required only for cross-account vending; a same-account vend needs none.
 
 The Workspace's kubeconfig connection secret lands in the `Cluster`'s own namespace:
 under Crossplane v2, namespaced managed resources write connection secrets locally
@@ -200,14 +201,13 @@ to the cluster-residue kinds, is **DRY-RUN by default** (prints the delete scrip
 review), and needs `cloudgov` + `jq` on PATH. Run it after a teardown, or periodically
 per workload account.
 
-## Decided
+## Design decisions
 
 ### Entrypoint shape — single root
 
 One Crossplane `Workspace` per `Cluster` runs the whole
 `landing-zone/fleet/aws/cluster-stack` tofu root, which wires `network → cluster`
-natively (`module.cluster` consumes `module.network`'s `vpc_id` + subnet ids). We
-do not split the components into their own chained Workspaces. tofu's DAG already
+natively (`module.cluster` consumes `module.network`'s `vpc_id` + subnet ids). The components are not split into their own chained Workspaces. tofu's DAG already
 owns that ordering, so per-component Workspaces would re-encode the same graph in
 composition YAML, round-trip outputs through composite status, and fragment both
 the apply's atomicity and the per-cluster S3 state — for no upside. The "compositions
@@ -271,10 +271,10 @@ the held cluster-stack delete the moment the bootstrap clears, so the cascade do
 on the garbage-collector backoff. (Both Workspaces carry explicit names so the Usage can
 reference them; the Usage is marked ready in-template so it doesn't gate the XR.)
 
-**Topology — spoke-local ArgoCD (decided).** Each vended cluster runs its own ArgoCD,
+**Topology — spoke-local ArgoCD.** Each vended cluster runs its own ArgoCD,
 reconciling the shared eks-gitops catalog onto itself — the bootstrap Secret is the
 `in-cluster` entry (`https://kubernetes.default.svc`), pointing ArgoCD at the spoke it
-runs on. We do not run a hub ArgoCD that reaches into every spoke: at fleet scale that
+runs on. A hub ArgoCD reaching into every spoke is not the design: at fleet scale that
 concentrates cluster-admin to all spokes in one place (blast radius) and bottlenecks
 reconciliation on a single instance. Spoke-local scales linearly and keeps each
 reconciler scoped to its own cluster. Consequently the spoke **self-registers** —

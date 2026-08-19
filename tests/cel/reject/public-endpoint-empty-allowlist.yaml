@@ -12,8 +12,9 @@ spec:
   environment: development
   clusterName: eks
   team: platform
-  # the hub's tofu state backend (required: no default could be right for two hubs)
-  stateBucket: nanohype-eks-fleet-tfstate
+  # the hub's tofu state backend — placeholder; name your own hub bucket
+  # (required: no default could be right for two hubs)
+  stateBucket: example-eks-fleet-tfstate
   stateRegion: us-east-1
   endpointPublicAccess: true
   # endpointPublicAccessCidrs omitted -> defaults to [] -> must be rejected

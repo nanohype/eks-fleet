@@ -51,9 +51,9 @@ Two conditional rules worth knowing before you generate a spec:
 - **`endpointPublicAccess: true` ⇒ non-empty `endpointPublicAccessCidrs`.** An empty
   allowlist would reach the cluster module as `0.0.0.0/0`, so admission rejects it.
 
-Note what is *not* in that table: a default for the state backend. Earlier revisions
-defaulted both fields to this estate's bucket and region, which meant omitting them
-silently pointed your `tofu init` at someone else's account. They are required now.
+Note what is *not* in that table: a default for the state backend. A default would be
+one deployment's bucket and region, and omitting the fields would silently point your
+`tofu init` at someone else's account — so both are required.
 If you are generating a `Cluster`, you must know where its state lives — that is not
 a value to inherit from whoever wrote the API.
 
@@ -137,5 +137,5 @@ gating there, but nothing requires it.
 - [`apis/cluster/`](apis/cluster/) — the `Cluster` XRD (the API)
 - [`compositions/`](compositions/) — the line (`Cluster` → Workspace)
 - [`config/`](config/) — management-cluster bootstrap + the hub ClusterProviderConfig
-- [`docs/architecture.md`](docs/architecture.md) — hub/spoke design + open decisions
+- [`docs/architecture.md`](docs/architecture.md) — hub/spoke design + the design decisions behind it
 - [`CLAUDE.md`](CLAUDE.md) — Claude Code session instructions

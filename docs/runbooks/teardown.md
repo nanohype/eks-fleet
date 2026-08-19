@@ -62,7 +62,7 @@ Once every spoke is gone:
 2. `cloudgov orphans` in the management account until clean. Confirm zero
    EKS / NAT / VPC / EC2 / EBS / ELB / EIP before walking away.
 
-## Notes carried back from live runs
+## Operational notes
 
 - **moduleSource is pinned to a SHA, not `main`.** provider-opentofu caches a
   module by its git ref and never re-pulls on retry. Roll the substrate forward

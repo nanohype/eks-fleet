@@ -6,7 +6,7 @@
 # The factory tears clusters down via `Cluster` delete -> tofu destroy, which only
 # removes resources in state. Two classes escape that and linger:
 #   1. EKS control-plane log groups (/aws/eks/<cluster>/cluster) left by a teardown
-#      that wasn't a clean tofu destroy (e.g. a hand-killed proof). A same-named
+#      that wasn't a clean tofu destroy (e.g. a hand-killed run). A same-named
 #      re-vend then fails with ResourceAlreadyExistsException.
 #   2. Karpenter interruption infra (the Karpenter-<cluster> SQS queue + Karpenter*
 #      EventBridge rules) orphaned when an apply created the AWS resource but errored

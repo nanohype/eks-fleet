@@ -2,13 +2,11 @@
 
 The end-to-end sequence to stand up a standing fleet hub, vend a real EKS
 cluster through it, bootstrap that cluster's addons, and bring the four tenant
-apps live on it. This is owner-run — it spends real AWS money and needs live SSO
+apps live on it. Run it by hand — it spends real AWS money and needs live SSO
 sessions. Each stage has a validation gate; don't advance until it passes.
 
-The local same-account loop (kind hub → real EKS → teardown) is already proven
-(`docs/rung-1-local-validation.md`), and both rungs ran on a real hub once and were
-torn down. This runbook is the *standing* version: a hub you keep, a cluster you
-keep, tenants on top.
+This runbook is the *standing* version of the loop in
+`docs/rung-1-local-validation.md`: a hub you keep, a cluster you keep, tenants on top.
 
 ## Accounts & tooling
 
@@ -19,21 +17,17 @@ keep, tenants on top.
 > [the contract in `AGENTS.md`](../AGENTS.md#the-contract-read-this-before-any-example)
 > before treating any value here as required.
 >
-> What genuinely blocks running this today is narrower: **no hub exists.** Even a
-> same-account vend needs a hub EKS cluster running Crossplane + provider-opentofu,
-> the `eks-fleet-crossplane` IRSA role, and the state bucket — none of which have been
-> stood up. That is an uncreated instance, not a gap in the API.
+> Stage 1 is a prerequisite, not an optional step: every vend, same-account included,
+> needs a hub EKS cluster running Crossplane + provider-opentofu, the
+> `eks-fleet-crossplane` IRSA role, and the state bucket.
 >
 > `$FLEET_PROFILE` and `$SPOKE_PROFILE` are deliberately unbound: bind them to
-> whatever accounts you actually use, rather than to profile names that only ever
-> existed on one machine.
+> whatever accounts you use.
 
 - **Fleet account** (profile `$FLEET_PROFILE`) — runs the hub (the standing control plane; a dedicated account, the `live/aws/fleet` tree). Command-level stand-up: [`stand-up-the-hub.md`](stand-up-the-hub.md).
 - **Workload account** `222222222222` (profile `$SPOKE_PROFILE`) — receives vended clusters.
-- Region: the estate's Ventures OU carries a region-lock SCP permitting only
-  `us-east-1`, so a venture-account vend must use it. Note the landing-zone
-  `live/aws/fleet` tree is still laid out under `us-west-2` and has to move in
-  lockstep; the paths quoted below are that tree as it stands today. ARM/Graviton default.
+- Region: any region the target account's SCPs permit. The landing-zone env tree path
+  quoted below encodes the region, so keep the two consistent. ARM/Graviton default.
 - CLIs: `aws` v2, `kubectl`, `helm`, `tofu` ≥ 1.10.0, `terragrunt`, `crossplane`, `cloudgov`, `jq`.
 - Live SSO before each stage: `aws sts get-caller-identity --profile "$FLEET_PROFILE"` (and `--profile "$SPOKE_PROFILE"` for cross-account steps). Hand SSO creds in via `! aws sso login --profile <p>`.
 
@@ -41,7 +35,7 @@ keep, tenants on top.
 
 What the vend chain handles for you, and what you still set by hand:
 
-1. **Bootstrap is automatic.** Applying a `Cluster` renders a second Workspace (`fleet/aws/cluster-bootstrap`) that runs Cilium + ArgoCD + the in-cluster ArgoCD Secret once the cluster is Ready, so the spoke self-reconciles the eks-gitops catalog + the operator (spoke-local). Same-account is validated. **Cross-account** also needs `spec.bootstrapAccessRoleArn` set to the hub's Crossplane role (cluster-stack adds an EKS access entry so the hub's ambient `get-token` reaches the spoke API) — confirmed at the first rung-2 vend. The bootstrap Workspace is gated on `Cluster.status.clusterEndpoint`: the composition's `function-go-templating` step only renders it once cluster-stack publishes the endpoint, so it never plans against an empty endpoint.
+1. **Bootstrap is automatic.** Applying a `Cluster` renders a second Workspace (`fleet/aws/cluster-bootstrap`) that runs Cilium + ArgoCD + the in-cluster ArgoCD Secret once the cluster is Ready, so the spoke self-reconciles the eks-gitops catalog + the operator (spoke-local). **Cross-account** additionally needs `spec.bootstrapAccessRoleArn` set to the hub's Crossplane role (cluster-stack adds an EKS access entry so the hub's ambient `get-token` reaches the spoke API). The bootstrap Workspace is gated on `Cluster.status.clusterEndpoint`: the composition's `function-go-templating` step only renders it once cluster-stack publishes the endpoint, so it never plans against an empty endpoint.
 2. **Portal can drive vends.** The chart wires the gitops write-paths + watch-back (`gitops.*` + `clusterWatchback.enabled`). Driving from portal is supported; a direct `Cluster` CR also works.
 3. **Cluster spec fields wired** — every field reaches the cluster, scalars and both **list** fields (`endpointPublicAccessCidrs`, `systemNodes.instanceTypes`), which the `function-go-templating` step JSON-encodes into the tofu vars. The API endpoint is private by default; a spec that opts into public access must carry a non-empty CIDR allowlist (a CEL rule on the XRD rejects public-with-empty at admission). See `examples/cluster-restricted.yaml` for the public-opt-in/cross-account shape.
 
@@ -82,11 +76,11 @@ The first vend is simplest as a **direct `Cluster` CR**. Driving it from portal 
 
 ## Stage 3 — The vended cluster's addons (automatic)
 
-Goal: Cilium + ArgoCD + the addon catalog (incl. the eks-agent-platform operator) reconciled onto the new cluster, so it can run tenants. **This is now automatic** — the `Cluster` composition's second Workspace (`fleet/aws/cluster-bootstrap`, which wraps agent-iam + cluster-bootstrap) runs once cluster-stack populates `Cluster.status`. You don't run `terragrunt apply` by hand; you watch it land.
+Goal: Cilium + ArgoCD + the addon catalog (incl. the eks-agent-platform operator) reconciled onto the new cluster, so it can run tenants. **This is automatic** — the `Cluster` composition's second Workspace (`fleet/aws/cluster-bootstrap`, which wraps agent-iam + cluster-bootstrap) runs once cluster-stack populates `Cluster.status`. You don't run `terragrunt apply` by hand; you watch it land.
 
 1. **(Cross-account only)** ensure `spec.bootstrapAccessRoleArn` is set to the hub's Crossplane role — cluster-stack grants it a cluster-admin EKS access entry so the bootstrap's ambient `get-token` can reach the spoke API. Portal sets this automatically when `FLEET_HUB_ROLE_ARN` is configured; a direct `Cluster` CR sets it by hand. Same-account needs nothing.
 2. **Watch the bootstrap Workspace converge:** `kubectl get workspace.opentofu <name>-bootstrap -n platform -w`. It errors ("cluster not Ready yet") until cluster-stack publishes the endpoint, then applies: Cilium → CoreDNS roll (fixes the stale-ENI DNS hang) → ArgoCD → the in-cluster ArgoCD `Secret` (with the `environment` + `eks-agent-platform/enabled` labels + the operator IRSA annotations).
-3. **Watch the addon waves:** pull the kubeconfig (`kubectl get secret -n platform <name>-kubeconfig -o jsonpath='{.data.kubeconfig}' | base64 -d > /tmp/kubeconfig`), then `KUBECONFIG=/tmp/kubeconfig watch 'kubectl -n argocd get application -o wide'`. Waves deploy in order (networking → security → observability → ai-platform). The operator lands via `addons-agent-operator` (selects the `enabled` label, injects the OIDC annotations as Helm values) — confirm it pulls image **`:0.1.1`+** (the public multi-arch image; `:0.1.0` had an amd64-in-arm64 bug). Set `spec.enableAgentPlatform: false` only to install the operator out of band.
+3. **Watch the addon waves:** pull the kubeconfig (`kubectl get secret -n platform <name>-kubeconfig -o jsonpath='{.data.kubeconfig}' | base64 -d > /tmp/kubeconfig`), then `KUBECONFIG=/tmp/kubeconfig watch 'kubectl -n argocd get application -o wide'`. Waves deploy in order (networking → security → observability → ai-platform). The operator lands via `addons-agent-operator` (selects the `enabled` label, injects the OIDC annotations as Helm values) — confirm it pulls the public multi-arch operator image the chart's `appVersion` names — the nodes are Graviton, so an amd64-only tag never starts. Set `spec.enableAgentPlatform: false` only to install the operator out of band.
 
 **Validate:**
 - `kubectl -n argocd wait --for=condition=SyncedAndHealthy application/app-of-apps --timeout=10m`.

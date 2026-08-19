@@ -14,9 +14,9 @@
 > boundary ARNs become required.
 >
 > Read this file for the *sequence* — what has to exist before what — and substitute
-> your own region, accounts and profiles throughout. Note also that the estate's
-> Ventures OU carries a region-lock SCP permitting only `us-east-1`, so the
-> `us-west-2` values below cannot be used verbatim in a venture account.
+> your own region, accounts and profiles throughout. Note also that if the target
+> account's OU carries a region-lock SCP, the region below has to be one that SCP
+> permits.
 
 The command-level walkthrough for standing up the standing **eks-fleet management
 hub** — a real EKS cluster in a dedicated `fleet` account running Crossplane v2 +
