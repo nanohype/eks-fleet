@@ -131,6 +131,21 @@ outside this repo, and a change that looks purely cosmetic here (rewording a
 `description`, changing a `default`) still lands as a diff in someone else's review
 queue. Worth a line in your PR body when you touch the schema.
 
+**What that looks like in practice.** Merging #31 (which added `stateBucket` /
+`stateRegion` and rewrote the `region` description) tripped the freshness check within
+the hour: integrity exited 0 — still pinned, so their PR CI was never perturbed by the
+merge — while freshness exited 1 and refreshed the pin. The resulting diff was
+*additive*: `spec.required` unchanged, all seven of their fixtures unchanged, every
+previously-admissible `Cluster` still admissible.
+
+That is the shape to aim for. Adding an optional field with a default is absorbed
+downstream; changing `required`, renaming a field, or tightening a CEL rule is not,
+and would land as a breaking diff in their review queue rather than a refresh. The
+same merge also made `stateRegion`'s `us-east-1` default something a consumer now
+relies on — it is what puts the state backend inside the region the estate's
+Ventures-OU SCP permits, so moving that default is a cross-repo change even though it
+reads as a one-line edit here.
+
 ### Add a workload account (vend into a new spoke)
 1. Provision the `fleet-vend` role in that account (landing-zone
    `components/aws/fleet-vend/`; trusts the hub's `eks-fleet-crossplane` role).
