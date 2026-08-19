@@ -21,8 +21,11 @@ This runbook is the *standing* version of the loop in
 > needs a hub EKS cluster running Crossplane + provider-opentofu, the
 > `eks-fleet-crossplane` IRSA role, and the state bucket.
 >
-> `$FLEET_PROFILE` and `$SPOKE_PROFILE` are deliberately unbound: bind them to
-> whatever accounts you use.
+> `$FLEET_PROFILE`, `$SPOKE_PROFILE` and `$FLEET_STATE_BUCKET` are deliberately
+> unbound: bind them to whatever accounts you use and whatever name you gave the
+> fleet state bucket. That bucket name is not published here — S3 names are one
+> global namespace with no ownership check, so a name printed in a runbook is a name
+> anyone can claim.
 
 - **Fleet account** (profile `$FLEET_PROFILE`) — runs the hub (the standing control plane; a dedicated account, the `live/aws/fleet` tree). Command-level stand-up: [`stand-up-the-hub.md`](stand-up-the-hub.md).
 - **Workload account** `222222222222` (profile `$SPOKE_PROFILE`) — receives vended clusters.
@@ -52,7 +55,7 @@ For **cross-account** vending into a workload spoke, also provision `fleet-vend`
 **Validate** (gates from stand-up-the-hub.md §2 + §4):
 - `aws eks describe-cluster --name hub-eks --region us-west-2 --profile "$FLEET_PROFILE"` → `ACTIVE`.
 - `kubectl get provider.pkg.crossplane.io provider-opentofu -o wide` → `Healthy=True`.
-- `aws s3 ls s3://nanohype-eks-fleet-tfstate/ --profile "$FLEET_PROFILE"` → versioned bucket.
+- `aws s3 ls "s3://$FLEET_STATE_BUCKET/" --profile "$FLEET_PROFILE"` → versioned bucket.
 - `kubectl get xrd clusters.fleet.nanohype.dev` and `kubectl get composition cluster-aws` present.
 
 ---
