@@ -203,6 +203,14 @@ or failed dependency:
   kind cluster, and asserts each `tests/cel/reject/*.yaml` is denied at admission
   (with its declared message) and each accept fixture + example is admitted, since
   `crossplane render` never evaluates the XRD's CEL guardrails.
+
+  **Known gap: no gate applies the XRD twice.** Every job installs the derived CRD
+  onto a fresh cluster, so only the create path is covered. The API server decodes an
+  update strictly where it tolerates a create, so a schema defect can pass every gate
+  and then fail every ArgoCD sync after the first on a live hub — which is how a
+  malformed field description shipped. Closing it means a second `kubectl apply` of
+  the derived CRD in the same job, asserting it reports `configured` rather than an
+  error.
 - **reaper-tests** — `scripts/reaper-test.sh` extracts the inline script from the
   `fleet-reaper` CronJob and runs it against a stub `kubectl` with the real `jq`.
   The reaper is the only shell here that can destroy infrastructure, and yamllint

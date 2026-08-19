@@ -40,7 +40,15 @@ trap cleanup EXIT
 # a run that examined nothing cannot look like a run that examined everything.
 count_fixtures() { # <label> <dir>
   set -- "$1" "$2"
-  n=$(find "$2" -maxdepth 1 -name '*.yaml' -type f 2>/dev/null | wc -l | tr -d ' ')
+  # Enumerate with the same glob the loops below use, not an equivalent-looking one.
+  # `find -name '*.yaml'` matches dotfiles and `*.yaml` does not, so the two disagree
+  # on the population and the printed count stops describing what was tested. A guard
+  # is only worth its line if it counts the set the loop iterates.
+  n=0
+  for _f in "$2"/*.yaml; do
+    [ -e "$_f" ] || continue   # unmatched glob expands to the literal pattern
+    n=$((n + 1))
+  done
   if [ "$n" -eq 0 ]; then
     echo "ERROR: no $1 fixtures found in $2 — the suite would report on an empty set" >&2
     exit 1
