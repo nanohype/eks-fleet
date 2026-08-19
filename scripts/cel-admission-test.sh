@@ -31,6 +31,28 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Assert each fixture set is non-empty before testing it. A suite that iterates an
+# unmatched glob reports on nothing: "every reject fixture was denied" and "every
+# accept fixture was admitted" are both trivially true of an empty set, and the
+# tally reaches `[ "$fail" -eq 0 ]` as 0 passed, 0 failed. What stands between this
+# suite and that outcome is only that `sed` and `kubectl` happen to error on a
+# missing path — an error, not an assertion. Count first, and print the counts, so
+# a run that examined nothing cannot look like a run that examined everything.
+count_fixtures() { # <label> <dir>
+  set -- "$1" "$2"
+  n=$(find "$2" -maxdepth 1 -name '*.yaml' -type f 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$n" -eq 0 ]; then
+    echo "ERROR: no $1 fixtures found in $2 — the suite would report on an empty set" >&2
+    exit 1
+  fi
+  echo "  $1: $n"
+}
+
+echo "== fixture inventory =="
+count_fixtures "reject" "$ROOT/tests/cel/reject"
+count_fixtures "accept" "$ROOT/tests/cel/accept"
+count_fixtures "examples" "$ROOT/examples"
+
 if ! kind get clusters 2>/dev/null | grep -qx "$CLUSTER"; then
   echo "== creating throwaway kind cluster '$CLUSTER' =="
   kind create cluster --name "$CLUSTER" >/dev/null
