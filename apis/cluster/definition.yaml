@@ -481,7 +481,9 @@ spec:
                 karpenterIamRoleArn:
                   type: string
                   description: The instance-profile role Karpenter assigns to the nodes it launches.
-                vpcId: {type: string, description: The cluster VPC, for peering and endpoint attachment.}
+                vpcId:
+                  type: string
+                  description: The cluster VPC, for peering and endpoint attachment.
                 privateSubnetIds:
                   type: array
                   items: {type: string}

@@ -46,7 +46,13 @@ ENTRYPOINTS = {
 }
 
 PIN_RE = re.compile(r"landing-zone\.git\?ref=([0-9a-f]{7,40})")
-VAR_KEY_RE = re.compile(r"-\s*\{key:\s*([a-z0-9_]+)\s*,")
+# Capture the key broadly, then validate the shape separately. A regex that only
+# matches well-formed keys silently drops a malformed one, and the comparison then
+# runs over the survivors and reports a clean contract — the composition translates
+# camelCase spec fields into snake_case tofu vars, so a camelCase key is the typo
+# this gate exists to catch, and the narrow pattern is exactly blind to it.
+VAR_KEY_RE = re.compile(r"-\s*\{key:\s*([^,}]+?)\s*,")
+VAR_KEY_SHAPE = re.compile(r"^[a-z0-9_]+$")
 ENTRYPOINT_RE = re.compile(r"^\s*entrypoint:\s*(\S+)\s*$")
 HCL_VAR_RE = re.compile(r'^variable\s+"([a-z0-9_]+)"\s*\{')
 HCL_DEFAULT_RE = re.compile(r"^\s*default\s*=")
@@ -91,6 +97,7 @@ def composition_vars_by_entrypoint() -> dict[str, set[str]]:
     """Templated `- {key: X, ...}` var keys, grouped by the enclosing Workspace entrypoint."""
     current = None
     out: dict[str, set[str]] = {}
+    malformed: list[tuple[str, str]] = []
     for line in read(COMPOSITION).splitlines():
         m = ENTRYPOINT_RE.match(line)
         if m:
@@ -99,7 +106,18 @@ def composition_vars_by_entrypoint() -> dict[str, set[str]]:
             continue
         km = VAR_KEY_RE.search(line)
         if km and current is not None:
-            out[current].add(km.group(1))
+            key = km.group(1)
+            if not VAR_KEY_SHAPE.match(key):
+                malformed.append((current, key))
+                continue
+            out[current].add(key)
+    if malformed:
+        print("FAIL: Workspace var keys that are not valid tofu identifiers:")
+        for entrypoint, key in malformed:
+            print(f"  {entrypoint}: {key!r}")
+        print("  A tofu variable name is [a-z0-9_]+. A key outside that is undeclared by")
+        print("  any substrate, so the vend fails at plan; it is not skipped here.")
+        sys.exit(1)
     return out
 
 
