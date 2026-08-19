@@ -39,8 +39,8 @@ defaults, you will put a cluster in the wrong region in someone else's account.
 |---|---|---|
 | `spec.vendRoleArn` | `""` | **Same-account.** The vend runs with the hub's own credentials. No spoke account, no `fleet-vend` role, nothing to provision. |
 | `spec.region` | *required* | Any AWS region. Nothing in this repo pins a region for the workload. |
-| `spec.stateRegion` | `us-east-1` | The **state bucket's** region, deliberately not `spec.region`. Decoupled so a vend into any region still inits against the one hub bucket. |
-| `spec.stateBucket` | `nanohype-eks-fleet-tfstate` | The one hub-account bucket holding every vended cluster's tofu state. Override it for your own hub. |
+| `spec.stateBucket` | *required* | The one hub-account bucket holding every vended cluster's tofu state. **No default** — a bucket name is a global-namespace identifier owned by one account, so no value could be right for a second deployment. |
+| `spec.stateRegion` | *required* | The **state bucket's** region, deliberately not `spec.region`. Decoupled so a vend into any region still inits against the one hub bucket. Required with `stateBucket`: the two name one thing. |
 | `spec.moduleSource` | pinned SHA | The landing-zone commit the Workspace fetches. Pinned, not `?ref=main`, so a vend is reproducible. |
 
 Two conditional rules worth knowing before you generate a spec:
@@ -50,6 +50,12 @@ Two conditional rules worth knowing before you generate a spec:
   at admission. They are *not* required for a same-account vend.
 - **`endpointPublicAccess: true` ⇒ non-empty `endpointPublicAccessCidrs`.** An empty
   allowlist would reach the cluster module as `0.0.0.0/0`, so admission rejects it.
+
+Note what is *not* in that table: a default for the state backend. Earlier revisions
+defaulted both fields to this estate's bucket and region, which meant omitting them
+silently pointed your `tofu init` at someone else's account. They are required now.
+If you are generating a `Cluster`, you must know where its state lives — that is not
+a value to inherit from whoever wrote the API.
 
 Both are CEL rules on the XRD, so they fail in milliseconds rather than ~20 minutes
 into a `tofu apply`. `apis/cluster/definition.yaml` is the authority; its field
@@ -68,12 +74,15 @@ Every `Cluster`:
 - Is rendered by `compositions/cluster-aws.yaml` against the XRD in
   `apis/cluster/definition.yaml`.
 
-**The XRD is a published interface.** `nanohype/clusters` vendors a JSON schema
-derived from `apis/cluster/definition.yaml`, pinned to a specific eks-fleet commit in
-its `schemas/sources.json`, and a weekly freshness check opens a PR there when this
-repo's `main` moves ahead of that pin. If you change the schema — including a
-`description` or a `default` — expect it to land as a diff in another repo's review
-queue. Say so in your PR body.
+**The XRD is a published interface with two consumers.** `nanohype/clusters` vendors
+a JSON schema derived from `apis/cluster/definition.yaml`, pinned to a specific
+eks-fleet commit, and a weekly freshness check opens a PR there when this repo's
+`main` moves ahead of the pin. `nanohype/portal` vendors its own copy and asserts
+every XRD field is accounted for in its `ClusterSpec` struct — and portal is what
+writes `Cluster` CRs in the GitOps flow, so a field portal does not know about is a
+field no portal-ordered vend ever sets. If you change the schema — including a
+`description` or a `default` — expect it to land as a diff in two other repos. Say so
+in your PR body.
 
 ## Vend a cluster
 

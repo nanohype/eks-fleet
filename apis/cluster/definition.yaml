@@ -393,32 +393,40 @@ spec:
                 # namespace + name so two same-named Clusters can never share state.
                 stateBucket:
                   type: string
-                  default: "nanohype-eks-fleet-tfstate"
                   description: >-
                     S3 bucket holding every vended cluster's tofu state. One bucket in
                     the hub account for the whole fleet, provisioned by landing-zone's
                     fleet-hub component alongside the hub IRSA role — not by a vend, so
                     it must exist before the first Cluster is applied. The per-cluster
                     state key is derived (fleet/<namespace>/<name>/terraform.tfstate),
-                    so this names only the bucket.
+                    so this names only the bucket. Required and deliberately
+                    undefaulted: an S3 bucket name is a global-namespace identifier
+                    belonging to one account, so no value here could be correct for a
+                    second deployment. Declare the hub's bucket rather than inheriting
+                    someone else's.
                 stateRegion:
                   type: string
-                  default: "us-east-1"
                   description: >-
                     Region the stateBucket lives in. This is the bucket's own region,
                     deliberately NOT spec.region — the S3 backend validates the bucket
                     against it, and decoupling the two lets a vend into any region still
-                    init against the one real state bucket. Defaults to us-east-1, the
-                    only region the estate's Ventures-OU region-lock SCP permits. Note
-                    the landing-zone live fleet tree still provisions its hub under
-                    us-west-2; that tree and this default must move in lockstep, and
-                    until they do a vend needs stateBucket/stateRegion set explicitly to
-                    wherever the bucket actually is.
+                    init against the one real state bucket. Required alongside
+                    stateBucket because the two name one thing: where this fleet's state
+                    lives. A region that merely looks plausible is worse than no value —
+                    it inits against the wrong place instead of failing.
               required:
                 - account
                 - region
                 - team
                 - clusterName
+                # The tofu S3 backend. Required rather than defaulted: any default here
+                # is one deployment's answer, and the bucket half is a global-namespace
+                # identifier owned by a specific account. Omission used to inherit this
+                # estate's values, which admission accepted (they were non-empty) and
+                # tofu then failed on at backend init — twenty minutes in, naming a
+                # bucket rather than the field. Required moves that to admission.
+                - stateBucket
+                - stateRegion
               x-kubernetes-validations:
                 # The EKS cluster name is <environment>-<clusterName>; if the two are
                 # equal the name doubles (development-development-*). Reject at admission
@@ -447,12 +455,12 @@ spec:
                 # The backend pair rides initArgs, where tofu resolves it long after
                 # admission: an empty bucket or region renders `-backend-config=bucket=`
                 # and fails `tofu init` with a message that names neither the Cluster nor
-                # the empty field. Both default non-empty, so this only catches an
-                # explicit blanking — cheap to reject here, expensive to debug there.
+                # the empty field. `required` above catches omission; this catches the
+                # other half — present but blank, which `required` permits.
                 - rule: >-
                     (!has(self.stateBucket) || self.stateBucket != '') &&
                     (!has(self.stateRegion) || self.stateRegion != '')
-                  message: "stateBucket and stateRegion must be non-empty (they complete the tofu S3 backend; omit them to take the defaults)"
+                  message: "stateBucket and stateRegion must be non-empty (they complete the tofu S3 backend: name the hub bucket and the region it lives in)"
             status:
               type: object
               description: >-

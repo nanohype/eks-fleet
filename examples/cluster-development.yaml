@@ -18,6 +18,9 @@ spec:
   # Required and unique per (account, region, environment); must not equal environment.
   clusterName: platform
   team: platform
+  # the hub's tofu state backend (required: no default could be right for two hubs)
+  stateBucket: nanohype-eks-fleet-tfstate
+  stateRegion: us-east-1
   # same-account vend: the hub's eks-fleet-crossplane role runs the Workspaces, and
   # its IAM gate only mints roles carrying the hub boundary — wire the SSM-published
   # ARN (/eks-fleet/development/fleet-hub/hub_permissions_boundary_arn) onto both halves.

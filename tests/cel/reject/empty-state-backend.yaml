@@ -1,9 +1,13 @@
 # stateBucket + stateRegion complete the entrypoint's partial `backend "s3" {}` via
-# the Workspace initArgs, which tofu resolves long after admission. An explicitly
-# blanked value renders `-backend-config=bucket=` and fails `tofu init` with a
-# message naming neither the Cluster nor the empty field, so the XRD's CEL rule must
-# reject it at admission. Both fields default non-empty; only an explicit blanking
-# reaches this rule.
+# the Workspace initArgs, which tofu resolves long after admission. A blanked value
+# renders `-backend-config=bucket=` and fails `tofu init` with a message naming
+# neither the Cluster nor the empty field, so the XRD's CEL rule must reject it at
+# admission.
+#
+# `required` catches omission; this fixture covers the half `required` does not —
+# present but blank. stateRegion is set to a real value here on purpose: if it were
+# omitted, this Cluster would be denied for the missing field rather than for the
+# CEL rule, and the test would pass while proving nothing about the rule it names.
 # EXPECT: stateBucket and stateRegion must be non-empty
 apiVersion: fleet.nanohype.dev/v1alpha1
 kind: Cluster
@@ -17,4 +21,4 @@ spec:
   clusterName: eks
   team: platform
   stateBucket: ""
-  # stateRegion left at its default; blanking either one is enough to be rejected
+  stateRegion: us-east-1

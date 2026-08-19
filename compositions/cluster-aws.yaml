@@ -54,11 +54,16 @@ spec:
             {{- /* + never re-pulls, so a moving ref is non-reproducible. Lockstep with the */}}
             {{- /* XRD moduleSource default in apis/cluster/definition.yaml. */}}
             {{- $module := dig "moduleSource" "git::https://github.com/nanohype/landing-zone.git?ref=1b5714dd25b9d12d53aafafaee4c2cc851fa178e" $spec }}
-            {{- /* tofu S3 backend: per-estate facts, so spec fields rather than literals */}}
-            {{- /* here. Defaults mirror the XRD's (keep them in lockstep). The state KEY */}}
-            {{- /* is derived per Workspace below, never a spec field. */}}
-            {{- $stateBucket := dig "stateBucket" "nanohype-eks-fleet-tfstate" $spec }}
-            {{- $stateRegion := dig "stateRegion" "us-east-1" $spec }}
+            {{- /* tofu S3 backend. No literal fallback on purpose: both fields are */}}
+            {{- /* `required` in the XRD, so admission guarantees them, and a fallback */}}
+            {{- /* here would be a second place for one deployment's values to hide — */}}
+            {{- /* reachable precisely when the XRD's guarantee is gone. `crossplane */}}
+            {{- /* render` is passed no XRD and applies no schema defaults, so an empty */}}
+            {{- /* string here renders `-backend-config=bucket=` and the fixture that */}}
+            {{- /* omitted the field fails loudly rather than inheriting a stale value. */}}
+            {{- /* The state KEY stays derived per Workspace below, never a spec field. */}}
+            {{- $stateBucket := dig "stateBucket" "" $spec }}
+            {{- $stateRegion := dig "stateRegion" "" $spec }}
             {{- /* cluster-stack's fresh tofu outputs (empty until it has applied) */}}
             {{- $cs := index (.observed.resources | default dict) "cluster-stack" }}
             {{- $csOut := dict }}
