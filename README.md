@@ -37,12 +37,13 @@ the API — a team applies it directly in its own namespace, no claim involved.
 ## Prerequisites
 
 - A management Kubernetes cluster with Crossplane v2 installed
-- `crossplane` CLI (v2), `kubectl`, `yamllint`, `task`
+- `crossplane` CLI (v2), `kubectl`, `yamllint`, `task`, `python3` + `pyyaml`, `jq`
+- `kind` + `docker`, for `task cel-test`
 
 ## Commands
 
 ```bash
-task validate     # yamllint + substrate-contract check + crossplane render (examples + gated-branch fixture)
+task validate     # yamllint + substrate-contract check + crossplane render (examples + gated-branch fixture) + reaper script tests
 task contract     # diff the composition's templated var keys against the pinned landing-zone substrate
 task render       # render a sample Cluster to the managed resources it produces
 task cel-test     # prove the XRD's CEL guardrails reject bad specs (spins a throwaway kind cluster)

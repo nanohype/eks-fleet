@@ -66,10 +66,9 @@ jobs:
           # releases.crossplane.io intermittently 403s for a minute or two. -f fails on
           # HTTP errors (no error-page saved); --retry-all-errors retries the 403 too;
           # a wide retry window (10 × ~6s, capped at 3m) rides out the CDN blip instead
-          # of failing the run. (Bumped after the 5×3s window lost to a longer 403.)
+          # of failing the run. (A 5 × 3s window is not wide enough — observed 403s have outlasted it.)
           curl -fsSL --retry 10 --retry-delay 6 --retry-max-time 180 --retry-all-errors -o crossplane "$url"
-          # integrity gate: the download must match the pinned digest. Subsumes the old
-          # ELF-sniff — it also rejects a CDN error page served as HTTP 200, and catches
+          # integrity gate: the download must match the pinned digest. It rejects a CDN error page served as HTTP 200, and catches
           # any artifact drift or tampering at the pinned version.
           echo "${CRANK_SHA256}  crossplane" | sha256sum -c - || {
             echo "::error::crossplane CLI checksum mismatch for ${CRANK_VERSION} (corrupt download or artifact drift)";
@@ -82,7 +81,7 @@ jobs:
         # Under Crossplane v2 the namespaced Cluster IS the resource you apply — render
         # it directly (no claim/XR split). Catches schema/patch drift without a cluster.
         # --crossplane-version pins the render-engine image to the same v2 line as the
-        # CLI above: render otherwise defaults to "latest stable", which now resolves to
+        # CLI above: render otherwise defaults to "latest stable", a moving target that resolves to
         # the v1.20.x line (no `internal render` subcommand → "unexpected argument
         # internal").
         run: |

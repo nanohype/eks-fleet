@@ -19,8 +19,9 @@ spec:
   # and must not equal environment.
   clusterName: analytics
   team: platform
-  # the hub's tofu state backend (required: no default could be right for two hubs)
-  stateBucket: nanohype-eks-fleet-tfstate
+  # the hub's tofu state backend — placeholder; name your own hub bucket
+  # (required: no default could be right for two hubs)
+  stateBucket: example-eks-fleet-tfstate
   stateRegion: us-east-1
   clusterVersion: "1.35"
   # cross-account: assume the workload account's fleet-vend role to provision,

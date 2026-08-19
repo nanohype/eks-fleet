@@ -5,9 +5,8 @@
 # ServiceAccount annotation below carries a <FLEET_ACCOUNT_ID> placeholder that the
 # hub's account id has to be substituted into at apply time; docs/stand-up-the-hub.md
 # does it with a sed as the file is piped to kubectl. No ApplicationSet in eks-gitops
-# syncs this directory (checked: nothing under its applicationsets/ references
-# eks-fleet's config/, provider-opentofu, or the crossplane-system bootstrap), so
-# there is no kustomize replacement filling the placeholder either. If this file is
+# syncs this directory, so there is no kustomize replacement filling the placeholder
+# either. If this file is
 # ever put under ArgoCD, the placeholder must become a real value or a documented
 # kustomize patch first — synced as-is, the SA gets a literal invalid role ARN and
 # every vend fails IRSA with no obvious cause.

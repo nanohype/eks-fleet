@@ -1,7 +1,7 @@
 # provider-opentofu for a LOCAL kind hub (kx) — same package as the EKS bootstrap,
 # but the runtime config carries NO IRSA annotation (kind has no IRSA). Credentials
-# come from the Secret-cred ClusterProviderConfig (providerconfig.yaml), not the pod's
-# identity. The 60m timeout + 1m poll still apply.
+# come from the aws-creds Secret this runtime config mounts (AWS_SHARED_CREDENTIALS_FILE),
+# not the pod's identity; the ClusterProviderConfig stays source: None. The 60m timeout + 1m poll still apply.
 apiVersion: pkg.crossplane.io/v1
 kind: Provider
 metadata:
