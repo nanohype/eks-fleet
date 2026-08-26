@@ -494,6 +494,31 @@ spec:
                     (!has(self.stateBucket) || self.stateBucket != '') &&
                     (!has(self.stateRegion) || self.stateRegion != '')
                   message: "stateBucket and stateRegion must be non-empty (they complete the tofu S3 backend: name the hub bucket and the region it lives in)"
+                # admission: the fields below identify WHICH infrastructure this
+                # Cluster owns. Editing one on a live Cluster does not move anything —
+                # it re-points the composition at a different target while the tofu
+                # state still describes the old one.
+                #
+                # stateBucket and stateRegion are the worst of them: the backend moves,
+                # tofu finds no state at the new location, and the next apply builds a
+                # second cluster while the first is left running and unmanaged. region
+                # and clusterName force a destroy-and-recreate of a cluster that is
+                # already serving. network.mode swaps a created VPC for an adopted one.
+                #
+                # None of that is recoverable from the Cluster CR, and none of it is
+                # visible at the moment of the edit — a one-word change is accepted, and
+                # the consequence arrives on the next reconcile. A transition rule is the
+                # only place to stop it, because only here is the previous value known.
+                #
+                # Changing the target is a new Cluster. Delete this one, or order another.
+                - rule: self.region == oldSelf.region
+                  message: "spec.region is immutable — it identifies the infrastructure this Cluster already owns; order a new Cluster instead"
+                - rule: self.clusterName == oldSelf.clusterName
+                  message: "spec.clusterName is immutable — changing it destroys and recreates a live cluster; order a new Cluster instead"
+                - rule: self.stateBucket == oldSelf.stateBucket
+                  message: "spec.stateBucket is immutable — moving the backend strands the existing tofu state and the next apply builds a second cluster"
+                - rule: self.stateRegion == oldSelf.stateRegion
+                  message: "spec.stateRegion is immutable — moving the backend strands the existing tofu state and the next apply builds a second cluster"
                 # admission: moduleSource names the OpenTofu module the hub clones and
                 # runs under its own IRSA, so its shape is a privilege boundary rather
                 # than a formatting preference. Two properties are required of it.

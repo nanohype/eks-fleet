@@ -10,7 +10,13 @@
 #   - every tests/cel/reject/*.yaml must be DENIED at admission with the message
 #     declared in its `# EXPECT:` header (grep-matched, so a denial for the wrong
 #     reason still fails the test), and
-#   - every tests/cel/accept/*.yaml and examples/*.yaml must be ADMITTED.
+#   - every tests/cel/accept/*.yaml and examples/*.yaml must be ADMITTED, and
+#   - each immutable spec field must be DENIED when changed on a Cluster that
+#     already exists, which is the one class the dry-run loops cannot reach: they
+#     only ever create, so `oldSelf` never exists and a transition rule is skipped.
+#
+# The derived CRD is also applied twice. A fresh cluster only exercises the create
+# path, and the API server decodes an update strictly where it tolerates a create.
 #
 # Env:
 #   CEL_TEST_CLUSTER  kind cluster name (default eks-fleet-cel; created if absent)
@@ -21,10 +27,12 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CLUSTER="${CEL_TEST_CLUSTER:-eks-fleet-cel}"
 NS=platform
 CREATED_CLUSTER=0
+CRD="$(mktemp)"
 
 KUBECTL() { kubectl --context "kind-${CLUSTER}" "$@"; }
 
 cleanup() {
+  rm -f "$CRD"
   if [ "$CREATED_CLUSTER" = "1" ] && [ "${CEL_TEST_KEEP:-}" != "1" ]; then
     kind delete cluster --name "$CLUSTER" >/dev/null 2>&1 || true
   fi
@@ -68,8 +76,26 @@ if ! kind get clusters 2>/dev/null | grep -qx "$CLUSTER"; then
 fi
 
 echo "== installing the Cluster CRD derived from the XRD =="
-python3 "$ROOT/scripts/xrd-to-crd.py" "$ROOT/apis/cluster/definition.yaml" | KUBECTL apply -f - >/dev/null
+python3 "$ROOT/scripts/xrd-to-crd.py" "$ROOT/apis/cluster/definition.yaml" > "$CRD"
+KUBECTL apply -f "$CRD" >/dev/null
 KUBECTL wait --for=condition=established crd/clusters.fleet.nanohype.dev --timeout=60s >/dev/null
+
+# Apply it a SECOND time. Installing onto a fresh cluster only exercises the create
+# path, and the API server decodes an update strictly where it tolerates a create —
+# so a schema defect can pass a first install and then fail every sync after it on a
+# live hub, which is how a malformed field description once shipped. A re-apply must
+# report `configured` or `unchanged`; anything else means the shipped XRD is not
+# re-appliable, and a hub reconciles by re-applying.
+echo "== re-applying the same CRD (the path a live hub takes on every sync) =="
+if out="$(KUBECTL apply -f "$CRD" 2>&1)"; then
+  case "$out" in
+    *configured | *unchanged) echo "  PASS  re-apply -> ${out##* }" ;;
+    *) echo "  FAIL  re-apply reported neither configured nor unchanged: $out" ; exit 1 ;;
+  esac
+else
+  echo "  FAIL  the derived CRD is not re-appliable: $out"
+  exit 1
+fi
 KUBECTL create namespace "$NS" --dry-run=client -o yaml | KUBECTL apply -f - >/dev/null
 
 pass=0
@@ -109,6 +135,52 @@ for f in "$ROOT"/tests/cel/accept/*.yaml "$ROOT"/examples/*.yaml; do
     fail=$((fail + 1))
   fi
 done
+
+# ─── transition rules (must be DENIED on UPDATE) ───
+#
+# A transition rule is the one kind the loops above cannot reach. They
+# server-dry-run each fixture against an empty cluster, so every apply is a create
+# and `oldSelf` never exists — the rule is skipped, and a suite that only creates
+# reports green whether the rule works or is absent entirely.
+#
+# So this creates one Cluster for real, then re-applies it with a single field
+# changed. The unchanged re-apply is asserted too, which is what separates "the rule
+# rejects an edit" from "the rule rejects everything".
+echo
+echo "== transition rules (must be DENIED on UPDATE) =="
+BASE="$ROOT/tests/cel/accept/minimal-required-only.yaml"
+KUBECTL apply -f "$BASE" >/dev/null
+
+if KUBECTL apply --dry-run=server -f "$BASE" >/dev/null 2>&1; then
+  echo "  PASS  re-applying the base unchanged is still admitted"
+  pass=$((pass + 1))
+else
+  echo "  FAIL  re-applying the base unchanged was denied — a transition rule is too broad"
+  fail=$((fail + 1))
+fi
+
+mutate() { # <field> <value>  -> the base fixture with one spec field changed
+  python3 -c 'import sys,yaml; d=yaml.safe_load(open(sys.argv[1])); d["spec"][sys.argv[2]]=sys.argv[3]; print(yaml.safe_dump(d,sort_keys=False))' \
+    "$BASE" "$1" "$2"
+}
+
+while read -r field value; do
+  [ -n "$field" ] || continue
+  out="$(mutate "$field" "$value" | KUBECTL apply --dry-run=server -f - 2>&1 || true)"
+  if printf '%s' "$out" | grep -qF -- "spec.$field is immutable"; then
+    echo "  PASS  changing spec.$field on a live Cluster is denied"
+    pass=$((pass + 1))
+  else
+    echo "  FAIL  changing spec.$field was not denied as immutable"
+    echo "        got: $out"
+    fail=$((fail + 1))
+  fi
+done <<'FIELDS'
+region eu-west-1
+clusterName renamed
+stateBucket some-other-bucket
+stateRegion eu-west-1
+FIELDS
 
 echo
 echo "CEL admission tests: $pass passed, $fail failed"
