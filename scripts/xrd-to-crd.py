@@ -11,6 +11,10 @@ plain kind cluster (no Crossplane install needed) enforces the identical rules �
 the CEL under test is byte-identical to production because it is the same schema,
 read from the same file at test time.
 
+What the derived CRD leaves out is untested, and leaving something out is silent:
+the CRD is merely smaller and the job still passes. So the script refuses a version
+key it does not carry rather than dropping it.
+
 Usage: xrd-to-crd.py <path-to-definition.yaml>   # writes the CRD YAML to stdout
 """
 
@@ -19,6 +23,19 @@ from __future__ import annotations
 import sys
 
 import yaml
+
+# Version keys this script knows how to carry into the derived CRD. `referenceable`
+# is XRD-only and maps to `storage`; the rest are CRD version fields of the same
+# name. A key outside this set stops the run — see the check in main().
+KNOWN_VERSION_KEYS = {
+    "name",
+    "served",
+    "referenceable",
+    "schema",
+    "additionalPrinterColumns",
+    "deprecated",
+    "deprecationWarning",
+}
 
 
 def main() -> int:
@@ -41,15 +58,48 @@ def main() -> int:
 
     crd_versions = []
     for i, v in enumerate(spec["versions"]):
-        crd_versions.append(
-            {
-                "name": v["name"],
-                "served": v.get("served", True),
-                # exactly one stored version; the XRD's `referenceable` flag maps to it
-                "storage": v.get("referenceable", i == 0),
-                "schema": {"openAPIV3Schema": v["schema"]["openAPIV3Schema"]},
-            }
-        )
+        # Refuse a version key this script does not carry, rather than dropping it.
+        #
+        # Everything the derived CRD omits is a thing the CEL job cannot test, and
+        # omission is silent: the derived CRD is simply smaller, the job still
+        # passes, and nothing says what was left behind. `additionalPrinterColumns`
+        # was dropped this way, so a column with an invalid type or a malformed
+        # jsonPath produced a byte-identical CRD and no gate ever saw it — while a
+        # live hub rejects the XRD outright.
+        #
+        # Listing what to copy would have the same failure the next time the XRD
+        # gains a field. Listing what is understood, and failing on the rest, moves
+        # the default from silent-drop to loud-stop.
+        unknown = sorted(set(v) - KNOWN_VERSION_KEYS)
+        if unknown:
+            print(
+                f"FAIL: version {v['name']} declares {unknown}, which this script does "
+                "not carry into the derived CRD.",
+                file=sys.stderr,
+            )
+            print(
+                "  Anything not carried is untested: add it below, or add it to "
+                "KNOWN_VERSION_KEYS with a note saying why it cannot be.",
+                file=sys.stderr,
+            )
+            return 1
+
+        crd_version = {
+            "name": v["name"],
+            "served": v.get("served", True),
+            # exactly one stored version; the XRD's `referenceable` flag maps to it
+            "storage": v.get("referenceable", i == 0),
+            "schema": {"openAPIV3Schema": v["schema"]["openAPIV3Schema"]},
+        }
+        # Carried so the API server validates them when the derived CRD is applied:
+        # a column's type must be one it recognises and its jsonPath must parse.
+        if "additionalPrinterColumns" in v:
+            crd_version["additionalPrinterColumns"] = v["additionalPrinterColumns"]
+        if "deprecated" in v:
+            crd_version["deprecated"] = v["deprecated"]
+            if "deprecationWarning" in v:
+                crd_version["deprecationWarning"] = v["deprecationWarning"]
+        crd_versions.append(crd_version)
 
     crd = {
         "apiVersion": "apiextensions.k8s.io/v1",
