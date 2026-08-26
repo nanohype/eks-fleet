@@ -16,7 +16,16 @@ Checks:
        a. every var the composition sends is declared by the pinned commit
           (no undeclared vars), and
        b. every required (no-default) substrate var is sent by the composition
-          (no missing required vars).
+          (no missing required vars), and
+       c. no required substrate var is sent only under a conditional, which is a
+          missing var for whichever specs skip the branch.
+
+The composition is read by parsing it. Its Workspace vars are YAML, and YAML gives
+the same mapping several spellings — a flow mapping, a block mapping, the keys in
+either order, a quoted key — while a comment gives something that looks like a var
+and is not one. Matching text finds the spelling its author had in mind; the vars it
+misses are reported as correct, because this gate compares sets and an unseen var is
+absent from both sides. `scripts/substrate-contract-test.sh` pins that scope.
 
 The pinned `variables.tf` files are read from a local landing-zone checkout when
 LANDING_ZONE_DIR points at one (dev-time, offline), otherwise fetched fresh from
@@ -34,6 +43,8 @@ import sys
 import urllib.error
 import urllib.request
 
+import yaml
+
 REPO = "nanohype/landing-zone"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 COMPOSITION = os.path.join(ROOT, "compositions", "cluster-aws.yaml")
@@ -46,16 +57,19 @@ ENTRYPOINTS = {
 }
 
 PIN_RE = re.compile(r"landing-zone\.git\?ref=([0-9a-f]{7,40})")
-# Capture the key broadly, then validate the shape separately. A regex that only
-# matches well-formed keys silently drops a malformed one, and the comparison then
-# runs over the survivors and reports a clean contract — the composition translates
-# camelCase spec fields into snake_case tofu vars, so a camelCase key is the typo
-# this gate exists to catch, and the narrow pattern is exactly blind to it.
-VAR_KEY_RE = re.compile(r"-\s*\{key:\s*([^,}]+?)\s*,")
 VAR_KEY_SHAPE = re.compile(r"^[a-z0-9_]+$")
-ENTRYPOINT_RE = re.compile(r"^\s*entrypoint:\s*(\S+)\s*$")
 HCL_VAR_RE = re.compile(r'^variable\s+"([a-z0-9_]+)"\s*\{')
 HCL_DEFAULT_RE = re.compile(r"^\s*default\s*=")
+
+# A whole-line go-template action — `{{- if $x }}`, `{{- end }}`, a `{{/* … */}}`
+# comment. These carry no YAML, so they are dropped before parsing.
+TMPL_LINE_RE = re.compile(r"^\s*\{\{.*\}\}\s*$")
+# An inline action standing in for a scalar: `value: {{ $spec.region | quote }}`.
+TMPL_INLINE_RE = re.compile(r"\{\{.*?\}\}")
+# The actions that open and close a conditional block.
+TMPL_OPEN_RE = re.compile(r"\{\{-?\s*(if|range|with)\b")
+TMPL_CLOSE_RE = re.compile(r"\{\{-?\s*end\s*-?\}\}")
+MARK_RE = re.compile("\x00(OPEN|CLOSE|A)\x00")
 
 
 def read(path: str) -> str:
@@ -93,32 +107,111 @@ def resolve_pin() -> str:
     return comp_pins[0]
 
 
-def composition_vars_by_entrypoint() -> dict[str, set[str]]:
-    """Templated `- {key: X, ...}` var keys, grouped by the enclosing Workspace entrypoint."""
-    current = None
-    out: dict[str, set[str]] = {}
-    malformed: list[tuple[str, str]] = []
-    for line in read(COMPOSITION).splitlines():
-        m = ENTRYPOINT_RE.match(line)
-        if m:
-            current = m.group(1)
-            out.setdefault(current, set())
+def template_of(path: str) -> str:
+    """The go-templating step's inline template, read out of the Composition."""
+    comp = yaml.safe_load(read(path))
+    for step in comp["spec"]["pipeline"]:
+        inline = step.get("input", {}).get("inline")
+        if inline and "template" in inline:
+            return inline["template"]
+    raise SystemExit("FAIL: the composition declares no inline go-template step")
+
+
+def yamlish(template: str) -> tuple[str, list[int]]:
+    """The template as parseable YAML, plus the conditional depth of each line.
+
+    Every `{{ … }}` is a hole in the YAML, so the document cannot be loaded as it
+    stands. Actions collapse to a marker first — they can span lines, as the
+    `{{- /* … */}}` comment blocks here do — then a line made only of markers is
+    dropped and any remaining marker becomes a placeholder scalar. What is left has
+    the same structure and the same keys as the rendered output.
+
+    Parsing that is what lets this gate see a var however it is spelled: a flow
+    mapping, a block mapping, the keys in either order, a quoted key. A pattern sees
+    only the spelling its author had in mind, and a var this gate cannot see is a
+    var it counts as correct.
+    """
+    def mark(m: re.Match[str]) -> str:
+        body = m.group(0)
+        if TMPL_OPEN_RE.search(body):
+            return "\x00OPEN\x00"
+        if TMPL_CLOSE_RE.search(body):
+            return "\x00CLOSE\x00"
+        return "\x00A\x00"
+
+    collapsed = re.sub(r"\{\{.*?\}\}", mark, template, flags=re.S)
+
+    out: list[str] = []
+    depths: list[int] = []
+    depth = 0
+    for line in collapsed.splitlines():
+        marks = MARK_RE.findall(line)
+        if marks and not MARK_RE.sub("", line).strip():
+            depth = max(depth + marks.count("OPEN") - marks.count("CLOSE"), 0)
             continue
-        km = VAR_KEY_RE.search(line)
-        if km and current is not None:
-            key = km.group(1)
+        depths.append(depth)
+        out.append(MARK_RE.sub("_", line))
+    return "\n".join(out), depths
+
+
+def composition_vars_by_entrypoint() -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+    """(vars sent per entrypoint, and of those the ones sent only under a conditional).
+
+    A var is conditional when it sits deeper than the Workspace that carries it, so
+    a Workspace that is itself gated (cluster-bootstrap waits on the cluster's
+    endpoint) does not make all of its vars look optional.
+    """
+    text, depths = yamlish(template_of(COMPOSITION))
+
+    sent: dict[str, set[str]] = {}
+    gated: dict[str, set[str]] = {}
+    for node in yaml.compose_all(text):
+        doc = yaml.safe_load(yaml.serialize(node))
+        if not isinstance(doc, dict) or doc.get("kind") != "Workspace":
+            continue
+        fp = doc.get("spec", {}).get("forProvider", {}) or {}
+        entrypoint = fp.get("entrypoint")
+        if not entrypoint:
+            continue
+        base = depths[node.start_mark.line]
+        keys = sent.setdefault(entrypoint, set())
+        gate = gated.setdefault(entrypoint, set())
+
+        for key_node, line in var_key_nodes(node):
+            key = key_node.value
             if not VAR_KEY_SHAPE.match(key):
-                malformed.append((current, key))
-                continue
-            out[current].add(key)
-    if malformed:
-        print("FAIL: Workspace var keys that are not valid tofu identifiers:")
-        for entrypoint, key in malformed:
-            print(f"  {entrypoint}: {key!r}")
-        print("  A tofu variable name is [a-z0-9_]+. A key outside that is undeclared by")
-        print("  any substrate, so the vend fails at plan; it is not skipped here.")
+                print(f"FAIL: {entrypoint}: {key!r} is not a valid tofu identifier")
+                print("  A tofu variable name is [a-z0-9_]+. A key outside that is")
+                print("  undeclared by any substrate, so the vend fails at plan.")
+                sys.exit(1)
+            keys.add(key)
+            if depths[line] > base:
+                gate.add(key)
+
+    if not sent:
+        print("FAIL: the composition renders no Workspace declaring an entrypoint")
         sys.exit(1)
-    return out
+    return sent, gated
+
+
+def var_key_nodes(workspace: yaml.Node):
+    """Every `vars[].key` scalar node of a Workspace, with the line it sits on."""
+    def get(mapping, name):
+        for k, v in mapping.value:
+            if k.value == name:
+                return v
+        return None
+
+    fp = get(get(workspace, "spec"), "forProvider")
+    vars_node = get(fp, "vars") if fp is not None else None
+    if vars_node is None:
+        return
+    for item in vars_node.value:
+        key = get(item, "key")
+        if key is None:
+            print(f"FAIL: a Workspace vars entry has no `key` (line {item.start_mark.line + 1})")
+            sys.exit(1)
+        yield key, key.start_mark.line
 
 
 def fetch_variables_tf(sha: str, path: str) -> str:
@@ -181,7 +274,7 @@ def parse_hcl_variables(text: str) -> tuple[set[str], set[str]]:
 
 def main() -> int:
     sha = resolve_pin()
-    sent_by_entrypoint = composition_vars_by_entrypoint()
+    sent_by_entrypoint, gated_by_entrypoint = composition_vars_by_entrypoint()
 
     failures = 0
     for entrypoint, var_path in ENTRYPOINTS.items():
@@ -195,6 +288,10 @@ def main() -> int:
 
         undeclared = sorted(sent - declared)
         missing_required = sorted(required - sent)
+        # A var the substrate requires must be sent on every render, so a required
+        # var inside a conditional is a missing var for whichever specs skip the
+        # branch — indistinguishable from a green run until a real vend takes it.
+        gated_required = sorted(required & gated_by_entrypoint.get(entrypoint, set()))
 
         print(f"\n== {entrypoint} ==")
         print(f"  composition sends {len(sent)} vars; substrate declares {len(declared)} "
@@ -208,7 +305,11 @@ def main() -> int:
             failures += 1
             print(f"  FAIL: composition omits required substrate vars: {missing_required}")
             print(f"        (these fail `tofu plan` with a missing-required-variable error)")
-        if not undeclared and not missing_required:
+        if gated_required:
+            failures += 1
+            print(f"  FAIL: required substrate vars sent only under a conditional: {gated_required}")
+            print(f"        (a spec that skips the branch fails `tofu plan` with a missing-required-variable error)")
+        if not undeclared and not missing_required and not gated_required:
             print("  OK: every sent var is declared, every required var is sent")
 
     if failures:
