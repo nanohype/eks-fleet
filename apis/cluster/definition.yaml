@@ -44,9 +44,11 @@ spec:
                 # --- placement: which spoke account/region to vend into -------
                 account:
                   type: string
+                  maxLength: 12
                   description: Workload AWS account id (records + tags). Cross-account targeting is via spec.vendRoleArn (the order desk sets the fleet-vend role ARN); empty = same-account.
                 region:
                   type: string
+                  maxLength: 32
                   description: >-
                     AWS region the cluster is vended into. Any region is valid — the
                     tofu state backend is decoupled from it: state lives in the single
@@ -58,13 +60,16 @@ spec:
                     case the region named here must be one that SCP permits.
                 environment:
                   type: string
+                  maxLength: 32
                   default: development
                   description: Environment tier (development | staging | production) — prefixes resource names + tags.
                 team:
                   type: string
+                  maxLength: 64
                   description: Owning team (tagging + ownership).
                 vendRoleArn:
                   type: string
+                  maxLength: 2048
                   default: ""
                   description: >-
                     Cross-account role the entrypoint's provider assumes to provision
@@ -72,6 +77,7 @@ spec:
                     credentials (same-account — e.g. the local kind-hub validation).
                 clusterPermissionsBoundaryArn:
                   type: string
+                  maxLength: 2048
                   default: ""
                   description: >-
                     Permissions-boundary ARN cluster-stack mints the cluster's IAM
@@ -87,6 +93,7 @@ spec:
                     ungated (e.g. the local kind hub on user credentials).
                 operatorPermissionsBoundaryArn:
                   type: string
+                  maxLength: 2048
                   default: ""
                   description: >-
                     Permissions-boundary ARN the bootstrap Workspace mints the
@@ -97,6 +104,7 @@ spec:
                     operator_permissions_boundary_arn var. Empty = ungated.
                 bootstrapAccessRoleArn:
                   type: string
+                  maxLength: 2048
                   default: ""
                   description: >-
                     For cross-account vends, the hub's Crossplane role ARN — granted
@@ -106,6 +114,7 @@ spec:
                     the creator (the hub) is already admin.
                 portalAccessRoleArn:
                   type: string
+                  maxLength: 2048
                   default: ""
                   description: >-
                     The portal worker's per-account spoke role ARN — granted a read
@@ -114,6 +123,7 @@ spec:
                     eks:DescribeCluster. Empty = portal not wired for this cluster.
                 dataKmsKeyArn:
                   type: string
+                  maxLength: 2048
                   default: ""
                   description: >-
                     The spoke's secrets-component data CMK ARN. The bootstrap
@@ -153,6 +163,7 @@ spec:
                     9-character region token like us-east-1.
                 clusterVersion:
                   type: string
+                  maxLength: 16
                   default: "1.36"
                   description: Kubernetes version.
                 endpointPublicAccess:
@@ -165,7 +176,8 @@ spec:
                     spec rejects public-with-empty at admission).
                 endpointPublicAccessCidrs:
                   type: array
-                  items: {type: string}
+                  items: {type: string, maxLength: 43}
+                  maxItems: 64
                   default: []
                   description: >-
                     CIDRs allowed to reach the public API endpoint. Required
@@ -181,7 +193,8 @@ spec:
                   properties:
                     instanceTypes:
                       type: array
-                      items: {type: string}
+                      items: {type: string, maxLength: 32}
+                      maxItems: 32
                       default: ["m7g.xlarge", "m6g.xlarge"]
                     minSize: {type: integer, default: 2}
                     maxSize: {type: integer, default: 6}
@@ -203,6 +216,7 @@ spec:
                   properties:
                     mode:
                       type: string
+                      maxLength: 16
                       enum: [create, adopt]
                       default: create
                       description: >-
@@ -220,10 +234,12 @@ spec:
                       properties:
                         vpcCidr:
                           type: string
+                          maxLength: 43
                           default: "10.0.0.0/16"
                           description: CIDR for the VPC (literal allocation). Mutually exclusive with ipamPoolId.
                         ipamPoolId:
                           type: string
+                          maxLength: 64
                           default: ""
                           description: >-
                             IPAM pool the VPC CIDR is drawn from. Empty (default) = literal
@@ -239,6 +255,7 @@ spec:
                             = literal allocation.
                         transitGatewayId:
                           type: string
+                          maxLength: 64
                           default: ""
                           description: >-
                             Transit gateway the VPC attaches to. Empty (default) = local NAT
@@ -266,6 +283,7 @@ spec:
                       properties:
                         vpcId:
                           type: string
+                          maxLength: 64
                           default: ""
                           description: VPC ID to adopt. Required (non-empty) when mode is adopt.
                         subnetIds:
@@ -275,12 +293,14 @@ spec:
                           properties:
                             private:
                               type: array
-                              items: {type: string}
+                              items: {type: string, maxLength: 64}
+                              maxItems: 64
                               default: []
                               description: Private subnet IDs (required, non-empty, when mode is adopt).
                             public:
                               type: array
-                              items: {type: string}
+                              items: {type: string, maxLength: 64}
+                              maxItems: 64
                               default: []
                               description: Public subnet IDs (empty is valid for a private-only cluster).
                   x-kubernetes-validations:
@@ -316,6 +336,7 @@ spec:
                 # --- bootstrap (the second, post-Ready Workspace) ------------
                 observabilityTier:
                   type: string
+                  maxLength: 16
                   enum: [floor, full]
                   default: floor
                   description: >-
@@ -349,6 +370,7 @@ spec:
                     Workspace runs (it always renders once the cluster is Ready).
                 tenantsRepoUrl:
                   type: string
+                  maxLength: 512
                   default: ""
                   description: >-
                     SSH URL of the private tenants GitOps repo. When set, the
@@ -356,6 +378,7 @@ spec:
                     credential so ArgoCD can pull portal-committed tenant manifests.
                 gitopsRepoUrl:
                   type: string
+                  maxLength: 512
                   default: "https://github.com/nanohype/eks-gitops.git"
                   description: >-
                     Git URL of the addon-catalog GitOps repo the spoke's app-of-apps
@@ -365,6 +388,7 @@ spec:
                     always sent (unlike tenantsRepoUrl, which is optional).
                 gitopsRepoBranch:
                   type: string
+                  maxLength: 255
                   default: "main"
                   description: >-
                     Branch of the addon-catalog GitOps repo the spoke tracks.
@@ -372,6 +396,7 @@ spec:
                 # --- the substrate the Workspace runs ------------------------
                 moduleSource:
                   type: string
+                  maxLength: 512
                   # Pinned to a landing-zone commit, not ?ref=main: provider-opentofu
                   # caches a module by its ref and never re-pulls on retry, so a moving
                   # ref makes a vend non-reproducible (and silently stale on a substrate
@@ -399,6 +424,7 @@ spec:
                 # namespace + name so two same-named Clusters can never share state.
                 stateBucket:
                   type: string
+                  maxLength: 63
                   description: >-
                     S3 bucket holding every vended cluster's tofu state. One bucket in
                     the hub account for the whole fleet, provisioned by landing-zone's
@@ -412,6 +438,7 @@ spec:
                     someone else's.
                 stateRegion:
                   type: string
+                  maxLength: 32
                   description: >-
                     Region the stateBucket lives in. This is the bucket's own region,
                     deliberately NOT spec.region — the S3 backend validates the bucket
@@ -492,25 +519,29 @@ spec:
                 they converge, and read by everything downstream — cluster-bootstrap,
                 the agent-platform operator, and anyone connecting to the cluster.
               properties:
-                clusterName: {type: string, description: The vended cluster's EKS name.}
-                clusterEndpoint: {type: string, description: EKS API endpoint.}
-                certificateAuthorityData: {type: string, description: Base64 cluster CA.}
+                clusterName: {type: string, maxLength: 64, description: The vended cluster's EKS name.}
+                clusterEndpoint: {type: string, maxLength: 512, description: EKS API endpoint.}
+                certificateAuthorityData: {type: string, maxLength: 32768, description: Base64 cluster CA.}
                 clusterSecurityGroupId:
                   type: string
+                  maxLength: 64
                   description: >-
                     The EKS-managed cluster security group. Rules that need to reach
                     the control plane target this, not the node groups' own groups.
-                oidcProviderArn: {type: string, description: IAM OIDC provider ARN.}
-                oidcIssuer: {type: string, description: OIDC issuer URL (no scheme).}
+                oidcProviderArn: {type: string, maxLength: 2048, description: IAM OIDC provider ARN.}
+                oidcIssuer: {type: string, maxLength: 512, description: OIDC issuer URL (no scheme).}
                 karpenterIamRoleArn:
                   type: string
+                  maxLength: 2048
                   description: The instance-profile role Karpenter assigns to the nodes it launches.
                 vpcId:
                   type: string
+                  maxLength: 64
                   description: The cluster VPC, for peering and endpoint attachment.
                 privateSubnetIds:
                   type: array
-                  items: {type: string}
+                  items: {type: string, maxLength: 64}
+                  maxItems: 64
                   description: >-
                     Private subnet IDs of the cluster's VPC (cluster-stack's
                     private_subnet_ids output). cluster-bootstrap republishes them in
@@ -519,7 +550,8 @@ spec:
                     internal load balancers correctly.
                 publicSubnetIds:
                   type: array
-                  items: {type: string}
+                  items: {type: string, maxLength: 64}
+                  maxItems: 64
                   description: >-
                     Public subnet IDs of the cluster's VPC (cluster-stack's
                     public_subnet_ids output). cluster-bootstrap republishes them in adopt
@@ -527,7 +559,8 @@ spec:
                     on public subnets.
                 subnetAzIds:
                   type: array
-                  items: {type: string}
+                  items: {type: string, maxLength: 64}
+                  maxItems: 64
                   description: >-
                     AWS AZ IDs (e.g. use1-az1) of the cluster's private subnets, in
                     privateSubnetIds order (cluster-stack's private_subnet_az_ids output).
