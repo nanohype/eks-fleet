@@ -45,7 +45,13 @@ spec:
                 account:
                   type: string
                   maxLength: 12
-                  description: Workload AWS account id (records + tags). Cross-account targeting is via spec.vendRoleArn (the order desk sets the fleet-vend role ARN); empty = same-account.
+                  description: >-
+                    Workload AWS account id. Records the placement and feeds resource
+                    tags. It does not select the account — spec.vendRoleArn does, being
+                    the role the entrypoint's provider assumes — so the two must agree,
+                    and admission requires this id to appear in that ARN. Leave
+                    vendRoleArn empty for a same-account vend, where the hub's own
+                    credentials are used and this field stands alone.
                 region:
                   type: string
                   maxLength: 32
@@ -543,6 +549,29 @@ spec:
                     !has(self.moduleSource) ||
                     self.moduleSource.matches('^git::https://[^?]+[.]git[?]ref=[0-9a-f]{40}$')
                   message: "moduleSource must be an https git source pinned to a full 40-character commit sha, e.g. git::https://github.com/<org>/landing-zone.git?ref=<sha>"
+                # admission: account and vendRoleArn both name where the cluster goes,
+                # and only one of them decides. vendRoleArn is the role the entrypoint's
+                # provider assumes, so it selects the account the cluster is really built
+                # in; account is recorded and tagged, and the composition never reads it.
+                # Nothing reconciled the two, so a Cluster could declare one account and
+                # vend into another, and every record downstream — tags, inventory, the
+                # order desk's own view — would name the wrong one.
+                #
+                # The mismatch is invisible in both directions: nothing surfaces it at
+                # apply time, and nothing surfaces it afterwards either, because the
+                # record that would reveal the true account is the field that was wrong.
+                #
+                # An ARN carries its account between the fifth and sixth colon, so
+                # requiring it to appear there makes the recorded account load-bearing
+                # rather than decorative.
+                - rule: >-
+                    !has(self.vendRoleArn) || self.vendRoleArn == '' ||
+                    self.vendRoleArn.contains('::' + self.account + ':')
+                  message: >-
+                    vendRoleArn must name the account in spec.account
+                    (arn:aws:iam::<account>:role/...) — the role decides which account
+                    the cluster is built in, so a mismatch would tag and record the
+                    wrong one
             status:
               type: object
               description: >-
