@@ -11,7 +11,7 @@ spec:
   account: "111111111111"
   region: us-west-2
   team: platform
-  clusterName: account-mismatch
+  clusterName: acctmismat
   stateBucket: example-fleet-state
   stateRegion: us-east-1
   vendRoleArn: arn:aws:iam::222222222222:role/development-eks-fleet-vend
