@@ -508,7 +508,11 @@ spec:
                 - rule: >-
                     !has(self.vendRoleArn) || self.vendRoleArn == '' ||
                     self.vendRoleArn.contains('::' + self.account + ':')
-                  message: "vendRoleArn must name the account in spec.account (arn:aws:iam::<account>:role/...) — the role decides which account the cluster is built in, so a mismatch would tag and record the wrong one"
+                  message: >-
+                    vendRoleArn must name the account in spec.account
+                    (arn:aws:iam::<account>:role/...) — the role decides which account
+                    the cluster is built in, so a mismatch would tag and record the
+                    wrong one
             status:
               type: object
               description: >-
