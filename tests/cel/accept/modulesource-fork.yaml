@@ -1,0 +1,15 @@
+# An adopter's own fork of the substrate, correctly pinned. The rule constrains the
+# shape of the source, not who publishes it.
+apiVersion: fleet.nanohype.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: fork-source
+  namespace: platform
+spec:
+  account: "000000000000"
+  region: us-west-2
+  team: platform
+  clusterName: fork-source
+  stateBucket: example-fleet-state
+  stateRegion: us-east-1
+  moduleSource: git::https://git.example.com/acme/landing-zone.git?ref=0123456789abcdef0123456789abcdef01234567
