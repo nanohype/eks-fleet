@@ -1,0 +1,17 @@
+# The substrate grants bootstrapAccessRoleArn cluster-admin on the vended cluster
+# via an EKS access entry. An account root ARN would hand cluster-admin to every
+# principal in that account. Only an IAM role ARN is a legitimate value.
+# EXPECT: spec.bootstrapAccessRoleArn in body should match
+apiVersion: fleet.nanohype.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: root-admin
+  namespace: platform
+spec:
+  account: "111111111111"
+  region: us-east-1
+  team: platform
+  clusterName: root-admin
+  stateBucket: example-fleet-state
+  stateRegion: us-east-1
+  bootstrapAccessRoleArn: arn:aws:iam::111111111111:root

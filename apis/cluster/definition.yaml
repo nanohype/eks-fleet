@@ -70,6 +70,7 @@ spec:
                 vendRoleArn:
                   type: string
                   maxLength: 2048
+                  pattern: '^$|^arn:aws[a-z0-9-]*:iam::[0-9]{12}:role/.+$'
                   default: ""
                   description: >-
                     Cross-account role the entrypoint's provider assumes to provision
@@ -78,6 +79,7 @@ spec:
                 clusterPermissionsBoundaryArn:
                   type: string
                   maxLength: 2048
+                  pattern: '^$|^arn:aws[a-z0-9-]*:iam::[0-9]{12}:policy/.+$'
                   default: ""
                   description: >-
                     Permissions-boundary ARN cluster-stack mints the cluster's IAM
@@ -94,6 +96,7 @@ spec:
                 operatorPermissionsBoundaryArn:
                   type: string
                   maxLength: 2048
+                  pattern: '^$|^arn:aws[a-z0-9-]*:iam::[0-9]{12}:policy/.+$'
                   default: ""
                   description: >-
                     Permissions-boundary ARN the bootstrap Workspace mints the
@@ -105,6 +108,7 @@ spec:
                 bootstrapAccessRoleArn:
                   type: string
                   maxLength: 2048
+                  pattern: '^$|^arn:aws[a-z0-9-]*:iam::[0-9]{12}:role/.+$'
                   default: ""
                   description: >-
                     For cross-account vends, the hub's Crossplane role ARN — granted
@@ -115,6 +119,7 @@ spec:
                 portalAccessRoleArn:
                   type: string
                   maxLength: 2048
+                  pattern: '^$|^arn:aws[a-z0-9-]*:iam::[0-9]{12}:role/.+$'
                   default: ""
                   description: >-
                     The portal worker's per-account spoke role ARN — granted a read
@@ -124,6 +129,7 @@ spec:
                 dataKmsKeyArn:
                   type: string
                   maxLength: 2048
+                  pattern: '^$|^arn:aws[a-z0-9-]*:kms:[a-z0-9-]+:[0-9]{12}:key/.+$'
                   default: ""
                   description: >-
                     The spoke's secrets-component data CMK ARN. The bootstrap

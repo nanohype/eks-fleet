@@ -1,0 +1,20 @@
+# A permissions boundary is an IAM policy. A role ARN here is silently ineffective:
+# the fleet role's IAM gate compares the boundary it is asked to attach against the
+# one it requires, so a wrong shape fails the vend rather than weakening anything —
+# but it fails minutes in, inside a provider pod log, instead of at admission.
+# EXPECT: spec.clusterPermissionsBoundaryArn in body should match
+apiVersion: fleet.nanohype.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: boundary-shape
+  namespace: platform
+spec:
+  account: "222222222222"
+  region: us-east-1
+  team: platform
+  clusterName: boundary-shape
+  stateBucket: example-fleet-state
+  stateRegion: us-east-1
+  vendRoleArn: arn:aws:iam::222222222222:role/development-eks-fleet-vend
+  clusterPermissionsBoundaryArn: arn:aws:iam::222222222222:role/not-a-policy
+  operatorPermissionsBoundaryArn: arn:aws:iam::222222222222:policy/eks-fleet/development-eks-fleet-vend-boundary
