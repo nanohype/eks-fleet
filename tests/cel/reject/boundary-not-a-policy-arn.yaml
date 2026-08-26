@@ -12,7 +12,7 @@ spec:
   account: "222222222222"
   region: us-east-1
   team: platform
-  clusterName: boundary-shape
+  clusterName: badbound
   stateBucket: example-fleet-state
   stateRegion: us-east-1
   vendRoleArn: arn:aws:iam::222222222222:role/development-eks-fleet-vend
