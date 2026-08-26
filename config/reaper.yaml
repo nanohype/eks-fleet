@@ -12,6 +12,12 @@
 #     mis-set ttlDays could expire many live clusters at once; if more than
 #     MAX_REAP are flagged, the job refuses to act and exits non-zero — a loud,
 #     alertable failure (kube_job_failed) instead of a silent mass-deletion.
+#
+# Both valves fail toward refusal, and both need it for the same reason: the safe
+# state must be the wide one. DRY_RUN arms only on the exact string `false`, and a
+# MAX_REAP that is not a non-negative integer fails the job rather than being
+# compared against — a `test` that cannot convert its operand exits 2, which an
+# `if` reads as false and `set -e` does not catch.
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -123,13 +129,31 @@ spec:
                   printf '%s\n' "$expired" | sed 's/^/  /'
                   # A clock skew or mis-set ttlDays could flag many live clusters at
                   # once. Refuse to act and fail loudly rather than mass-delete.
-                  if [ "$count" -gt "${MAX_REAP:-5}" ]; then
-                    echo "ERROR: $count expired exceeds MAX_REAP=${MAX_REAP:-5} — refusing to reap." >&2
+                  max=${MAX_REAP:-5}
+                  # Reject a ceiling rather than compare against it. `test` exits 2 on
+                  # a value it cannot convert, and an `if` condition is exempt from
+                  # `set -e`, so an unusable ceiling makes the comparison read false and
+                  # the breaker is skipped — absent precisely when a TTL or clock fault
+                  # is what raised the count. Anything but digits fails the job instead.
+                  case "$max" in
+                    ''|*[!0-9]*)
+                      echo "ERROR: MAX_REAP must be a non-negative integer, got: '$max'" >&2
+                      exit 1
+                      ;;
+                  esac
+                  if [ "$count" -gt "$max" ]; then
+                    echo "ERROR: $count expired exceeds MAX_REAP=$max — refusing to reap." >&2
                     echo "Investigate (clock skew? mis-set ttlDays?) or raise MAX_REAP to proceed." >&2
                     exit 1
                   fi
-                  if [ "${DRY_RUN:-true}" = "true" ]; then
-                    echo "DRY-RUN: would reap the $count cluster(s) above. Set DRY_RUN=false to arm."
+                  # Arming is an explicit act, so only the exact string `false` arms.
+                  # Testing the other way round — arm unless the value is `true` — makes
+                  # `True`, a trailing space or a typo delete real clusters, because the
+                  # safe state is then one spelling wide while the armed state is
+                  # everything else.
+                  if [ "${DRY_RUN:-true}" != "false" ]; then
+                    echo "DRY-RUN: would reap the $count cluster(s) above (DRY_RUN='${DRY_RUN:-true}')."
+                    echo "Set DRY_RUN=false — exactly that — to arm."
                     exit 0
                   fi
                   printf '%s\n' "$expired" | while IFS=/ read -r ns name; do

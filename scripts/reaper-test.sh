@@ -175,6 +175,27 @@ fi
 set -- team-a e1 1 "$EXPIRED_AT" team-a e2 1 "$EXPIRED_AT" team-a e3 1 "$EXPIRED_AT" \
        team-a e4 1 "$EXPIRED_AT" team-a e5 1 "$EXPIRED_AT" team-a e6 1 "$EXPIRED_AT"
 items "$@" > "$workdir/mass.json"
+
+# Both of the reaper's safety valves are compared against one exact string, and the
+# two comparisons have opposite polarities: `test -gt` tolerates whitespace and a
+# leading zero on MAX_REAP, while DRY_RUN's `=` tolerates nothing. A valve whose safe
+# state is one spelling wide is armed by a typo, so each spelling is pinned here.
+#
+# DRY_RUN: only an explicit disarm may arm the reaper. "True" is ordinary YAML and a
+# valid env value, so it must stay in the safe state rather than delete.
+for spelling in True TRUE "true " yes 1 tru; do
+  STUB_GET_JSON="$workdir/mixed.json" DRY_RUN="$spelling" \
+    expect "DRY_RUN=$spelling stays disarmed" 0 0 "DRY-RUN"
+done
+
+# MAX_REAP: `test` exits 2 on a bound it cannot convert, and an `if` condition is
+# exempt from `set -e`, so an unusable bound must be rejected before it is compared —
+# otherwise the circuit breaker is skipped rather than enforced.
+for bound in 5.0 five abc "5 "; do
+  STUB_GET_JSON="$workdir/mass.json" DRY_RUN=false MAX_REAP="$bound" \
+    expect "MAX_REAP=$bound is refused, not ignored" 1 0 "MAX_REAP"
+done
+
 STUB_GET_JSON="$workdir/mass.json" DRY_RUN=false MAX_REAP=5 \
   expect "MAX_REAP refuses a mass reap" 1 0 "refusing to reap"
 
