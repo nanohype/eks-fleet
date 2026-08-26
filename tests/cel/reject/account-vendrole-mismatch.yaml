@@ -1,0 +1,19 @@
+# The recorded account and the account the vend role actually targets disagree.
+# vendRoleArn decides where the cluster is built; account is what every tag and
+# inventory record says. A mismatch is invisible at apply time and afterwards.
+# EXPECT: vendRoleArn must name the account in spec.account
+apiVersion: fleet.nanohype.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: account-mismatch
+  namespace: platform
+spec:
+  account: "111111111111"
+  region: us-west-2
+  team: platform
+  clusterName: account-mismatch
+  stateBucket: example-fleet-state
+  stateRegion: us-east-1
+  vendRoleArn: arn:aws:iam::222222222222:role/development-eks-fleet-vend
+  clusterPermissionsBoundaryArn: arn:aws:iam::222222222222:policy/development-eks-fleet-vend-boundary
+  operatorPermissionsBoundaryArn: arn:aws:iam::222222222222:policy/development-eks-fleet-vend-boundary
