@@ -1,0 +1,16 @@
+# An SSH source. The Workspace pod carries no SSH key, so this cannot fetch — and
+# a scheme resolved outside https reaches code a reviewer of this repo cannot see.
+# EXPECT: moduleSource must be an https git source pinned to a full 40-character commit sha
+apiVersion: fleet.nanohype.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: ssh-source
+  namespace: platform
+spec:
+  account: "000000000000"
+  region: us-west-2
+  team: platform
+  clusterName: ssh-source
+  stateBucket: example-fleet-state
+  stateRegion: us-east-1
+  moduleSource: git::ssh://git@github.com/nanohype/landing-zone.git?ref=1b5714dd25b9d12d53aafafaee4c2cc851fa178e

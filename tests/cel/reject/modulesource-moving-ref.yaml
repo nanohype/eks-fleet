@@ -1,0 +1,17 @@
+# A branch instead of a commit sha. provider-opentofu caches a module by ref and
+# never re-pulls, so `main` resolves once and every later vend reuses that copy —
+# two clusters ordered from the same spec can run different substrate.
+# EXPECT: moduleSource must be an https git source pinned to a full 40-character commit sha
+apiVersion: fleet.nanohype.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: moving-ref
+  namespace: platform
+spec:
+  account: "000000000000"
+  region: us-west-2
+  team: platform
+  clusterName: moving-ref
+  stateBucket: example-fleet-state
+  stateRegion: us-east-1
+  moduleSource: git::https://github.com/nanohype/landing-zone.git?ref=main
